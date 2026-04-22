@@ -226,9 +226,7 @@ def timeseries_data_loader(
         rows_out = len(out)
         log.info("Timeseries cleansing: rows in=%s out=%s (target NaNs retained for AutoGluon).", rows_in, rows_out)
         if rows_out == 0:
-            raise ValueError(
-                "After removing duplicate (id, timestamp) pairs, the dataset has no rows left."
-            )
+            raise ValueError("After removing duplicate (id, timestamp) pairs, the dataset has no rows left.")
 
         return out.reset_index(drop=True)
 

@@ -15,14 +15,9 @@ Train and test CSV splits are produced on the PVC workspace (``PipelineConfig.wo
 
 Pipeline stages:
 
-1. **Data loading & splitting** (``timeseries_data_loader``): Loads CSV from S3 (up to 100 MB).
-   Replaces ``±inf`` with NaN; keeps missing targets for AutoGluon’s model-specific NaN handling.
-   Requires parseable timestamps and non-null ids (invalid timestamps raise; rows are not silently
-   dropped to preserve regular frequency). Deduplicates ``(id, timestamp)`` (keep last).
-   Then applies a two-stage **per-series temporal** split on ``id_column`` / ``timestamp_column``:
-   default **80/20** train vs test per series, then **30/70** of each series' train rows into
-   ``models_selection_train_dataset.csv`` and ``extra_train_dataset.csv`` under
-   ``{workspace_path}/datasets/``. The test split is written to the ``sampled_test_dataset`` artifact.
+1. **Data loading & splitting** (``timeseries_data_loader``): Loads CSV from S3 (up to 100 MB), replaces ``±inf`` with NaN (missing targets stay for AutoGluon), requires parseable timestamps and non-null ids, deduplicates ``(id_column, timestamp_column)``, then applies a two-stage **per-series
+temporal** split on ``id_column`` / ``timestamp_column``: default **80/20** train vs test per series, then **30/70** of each series' train rows into ``models_selection_train_dataset.csv`` and ``extra_train_dataset.csv`` under ``{workspace_path}/datasets/``. The test split is written to the
+``sampled_test_dataset`` artifact.
 
 2. **Model selection** (``autogluon_timeseries_models_selection``): Trains multiple AutoGluon TimeSeries models on the selection split, scores them on the test split, and emits the top ``top_n`` models plus predictor path and configuration.
 

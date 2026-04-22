@@ -608,12 +608,8 @@ class TestTimeseriesDataLoaderScenarioMatrix:
         d_shuf = tmp_path_factory.mktemp("shuffled")
         res_s, st_s = _run_loader(d_sorted, _timeseries_csv(10))
         res_h, st_h = _run_loader(d_shuf, _shuffled_timeseries_csv(10, seed=123))
-        m_s = _multiset_observations(
-            res_s.models_selection_train_data_path, res_s.extra_train_data_path, st_s.path
-        )
-        m_h = _multiset_observations(
-            res_h.models_selection_train_data_path, res_h.extra_train_data_path, st_h.path
-        )
+        m_s = _multiset_observations(res_s.models_selection_train_data_path, res_s.extra_train_data_path, st_s.path)
+        m_h = _multiset_observations(res_h.models_selection_train_data_path, res_h.extra_train_data_path, st_h.path)
         assert m_s == m_h
         test_s = sorted((r["timestamp"], r["target"]) for r in _read_csv_rows(st_s.path))
         test_h = sorted((r["timestamp"], r["target"]) for r in _read_csv_rows(st_h.path))
@@ -628,9 +624,7 @@ class TestTimeseriesDataLoaderScenarioMatrix:
         res_b, st_b = _run_loader(d2, self._two_series_shuffled_csv())
         assert _multiset_observations(
             res_a.models_selection_train_data_path, res_a.extra_train_data_path, st_a.path
-        ) == _multiset_observations(
-            res_b.models_selection_train_data_path, res_b.extra_train_data_path, st_b.path
-        )
+        ) == _multiset_observations(res_b.models_selection_train_data_path, res_b.extra_train_data_path, st_b.path)
 
     @pytest.mark.parametrize(
         "n_rows,selection_train_size,expect_selection,expect_extra,expect_test",
