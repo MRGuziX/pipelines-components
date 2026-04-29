@@ -71,7 +71,6 @@ def parse_and_chunk(
         The S3 URI where JSONL chunk files were written.
     """
     import base64
-    import json
     import os
     import textwrap
     import time
@@ -270,7 +269,10 @@ def parse_and_chunk(
                     t_s3 = time.time() - t_s3_start
 
                     t_total = time.time() - t_start
-                    log_verbose(f"[Worker {worker_pid}] {fname}: Uploaded to s3://{s3_bucket}/{s3_key} in {t_s3:.2f}s (total: {t_total:.2f}s)")
+                    log_verbose(
+                        f"[Worker {worker_pid}] {fname}: Uploaded to "
+                        f"s3://{s3_bucket}/{s3_key} in {t_s3:.2f}s (total: {t_total:.2f}s)"
+                    )
 
                     res_q.put(("success", file_path, page_count, len(lines), ""))
 
@@ -347,7 +349,10 @@ def parse_and_chunk(
                         result = self._res_q.get(timeout=FILE_TIMEOUT)
                         status, _, page_count, chunk_count, error_msg = result
                         elapsed = round(time.time() - t0, 3)
-                        log_verbose(f"[Actor@{self.hostname}] {fname}: {status} in {elapsed}s (pages={page_count}, chunks={chunk_count})")
+                        log_verbose(
+                            f"[Actor@{self.hostname}] {fname}: {status} in {elapsed}s "
+                            f"(pages={page_count}, chunks={chunk_count})"
+                        )
                     except queue.Empty:
                         status, page_count, chunk_count = "timeout", 0, 0
                         error_msg = f"Timed out after {FILE_TIMEOUT}s"
@@ -567,9 +572,7 @@ def parse_and_chunk(
 
     # Encode entrypoint script as base64 env var to avoid creating
     # Secrets or ConfigMaps (service account lacks permissions for both).
-    script_b64 = base64.b64encode(
-        _DOCLING_CHUNK_PROCESS_PY.encode()
-    ).decode()
+    script_b64 = base64.b64encode(_DOCLING_CHUNK_PROCESS_PY.encode()).decode()
 
     shared_mount = V1VolumeMount(pvc_mount_path, name="shared-data")
     data_volume = V1Volume(
@@ -636,8 +639,8 @@ def parse_and_chunk(
         ttl_seconds_after_finished=300,
     )
 
-    from kubernetes import config as k8s_config
     from kubernetes import client as k8s_client
+    from kubernetes import config as k8s_config
 
     try:
         k8s_config.load_incluster_config()
@@ -654,22 +657,31 @@ def parse_and_chunk(
 
     # Remove kueue queue-name label so kueue does not manage this job
     rayjob_obj = custom_api.get_namespaced_custom_object(
-        group=rayjob_group, version=rayjob_version,
-        namespace=namespace, plural=rayjob_plural, name=rayjob_name,
+        group=rayjob_group,
+        version=rayjob_version,
+        namespace=namespace,
+        plural=rayjob_plural,
+        name=rayjob_name,
     )
     labels = rayjob_obj.get("metadata", {}).get("labels", {})
     if "kueue.x-k8s.io/queue-name" in labels:
         custom_api.patch_namespaced_custom_object(
-            group=rayjob_group, version=rayjob_version,
-            namespace=namespace, plural=rayjob_plural, name=rayjob_name,
+            group=rayjob_group,
+            version=rayjob_version,
+            namespace=namespace,
+            plural=rayjob_plural,
+            name=rayjob_name,
             body={"metadata": {"labels": {"kueue.x-k8s.io/queue-name": None}}},
         )
         print(f"Removed kueue.x-k8s.io/queue-name label from RayJob '{rayjob_name}'.")
 
     # Unsuspend the RayJob to trigger cluster creation
     custom_api.patch_namespaced_custom_object(
-        group=rayjob_group, version=rayjob_version,
-        namespace=namespace, plural=rayjob_plural, name=rayjob_name,
+        group=rayjob_group,
+        version=rayjob_version,
+        namespace=namespace,
+        plural=rayjob_plural,
+        name=rayjob_name,
         body={"spec": {"suspend": False}},
     )
     print(f"Unsuspended RayJob '{rayjob_name}' - cluster will now start provisioning.")
@@ -680,8 +692,11 @@ def parse_and_chunk(
     start_time = time.time()
     while True:
         rayjob_obj = custom_api.get_namespaced_custom_object(
-            group=rayjob_group, version=rayjob_version,
-            namespace=namespace, plural=rayjob_plural, name=rayjob_name,
+            group=rayjob_group,
+            version=rayjob_version,
+            namespace=namespace,
+            plural=rayjob_plural,
+            name=rayjob_name,
         )
         ray_status = rayjob_obj.get("status", {})
         cluster_status = ray_status.get("rayClusterStatus", {})
@@ -700,15 +715,21 @@ def parse_and_chunk(
                 f"Ready workers: {ready_workers}/{num_workers}, state: {cluster_state}"
             )
 
-        print(f"  Waiting for cluster... ready workers: {ready_workers}/{num_workers}, state: {cluster_state} ({elapsed:.0f}s)")
+        print(
+            f"  Waiting for cluster... ready workers: {ready_workers}/{num_workers}, "
+            f"state: {cluster_state} ({elapsed:.0f}s)"
+        )
         time.sleep(10)
 
     # Wait for job completion
     print("Waiting for RayJob to complete...")
     while True:
         rayjob_obj = custom_api.get_namespaced_custom_object(
-            group=rayjob_group, version=rayjob_version,
-            namespace=namespace, plural=rayjob_plural, name=rayjob_name,
+            group=rayjob_group,
+            version=rayjob_version,
+            namespace=namespace,
+            plural=rayjob_plural,
+            name=rayjob_name,
         )
         job_status = rayjob_obj.get("status", {}).get("jobStatus", "")
         if job_status == "SUCCEEDED":

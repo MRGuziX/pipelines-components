@@ -9,9 +9,18 @@ explicit API URL or token required.
 
 from kfp import dsl
 
+_BASE_IMAGE = (
+    "registry.redhat.io/rhoai/odh-pipeline-runtime-datascience-cpu-py312-rhel9"
+    "@sha256:f9844dc150592a9f196283b3645dda92bd80dfdb3d467fa8725b10267ea5bdbc"
+)
+
+_VLLM_IMAGE = (
+    "registry.redhat.io/rhaiis/vllm-cuda-rhel9@sha256:094db84a1da5e8a575d0c9eade114fa30f4a2061064a338e3e032f3578f8082a"
+)
+
 
 @dsl.component(
-    base_image="registry.redhat.io/rhoai/odh-pipeline-runtime-datascience-cpu-py312-rhel9@sha256:f9844dc150592a9f196283b3645dda92bd80dfdb3d467fa8725b10267ea5bdbc",
+    base_image=_BASE_IMAGE,
     packages_to_install=["kubernetes>=28.1.0"],
 )
 def model_deployment(
@@ -118,7 +127,7 @@ def model_deployment(
             "containers": [
                 {
                     "name": "kserve-container",
-                    "image": "registry.redhat.io/rhaiis/vllm-cuda-rhel9@sha256:094db84a1da5e8a575d0c9eade114fa30f4a2061064a338e3e032f3578f8082a",
+                    "image": _VLLM_IMAGE,
                     "command": ["python", "-m", "vllm.entrypoints.openai.api_server"],
                     "args": [
                         "--port=8080",
@@ -283,18 +292,13 @@ def model_deployment(
             name=isvc_name,
         )
         conditions = obj.get("status", {}).get("conditions", [])
-        ready = any(
-            c.get("type") == "Ready" and c.get("status") == "True"
-            for c in conditions
-        )
+        ready = any(c.get("type") == "Ready" and c.get("status") == "True" for c in conditions)
         if ready:
             url = obj.get("status", {}).get("url", "")
             print(f"InferenceService ready: {url}")
             return f"{url}/v1"
 
-    raise TimeoutError(
-        f"InferenceService '{isvc_name}' did not become ready within 30 minutes."
-    )
+    raise TimeoutError(f"InferenceService '{isvc_name}' did not become ready within 30 minutes.")
 
 
 if __name__ == "__main__":

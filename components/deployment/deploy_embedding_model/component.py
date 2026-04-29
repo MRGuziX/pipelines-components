@@ -10,16 +10,25 @@ explicit API URL or token required.
 
 from kfp import dsl
 
+_BASE_IMAGE = (
+    "registry.redhat.io/rhoai/odh-pipeline-runtime-datascience-cpu-py312-rhel9"
+    "@sha256:f9844dc150592a9f196283b3645dda92bd80dfdb3d467fa8725b10267ea5bdbc"
+)
+
+_DEFAULT_RUNTIME_IMAGE = (
+    "registry.redhat.io/rhaiis/vllm-cuda-rhel9@sha256:094db84a1da5e8a575d0c9eade114fa30f4a2061064a338e3e032f3578f8082a"
+)
+
 
 @dsl.component(
-    base_image="registry.redhat.io/rhoai/odh-pipeline-runtime-datascience-cpu-py312-rhel9@sha256:f9844dc150592a9f196283b3645dda92bd80dfdb3d467fa8725b10267ea5bdbc",
+    base_image=_BASE_IMAGE,
     packages_to_install=["kubernetes>=28.1.0"],
 )
 def deploy_embedding_model(
     model_name: str,
     namespace: str,
     serving_runtime_name: str = "embedding-runtime",
-    runtime_image: str = "registry.redhat.io/rhaiis/vllm-cuda-rhel9@sha256:094db84a1da5e8a575d0c9eade114fa30f4a2061064a338e3e032f3578f8082a",
+    runtime_image: str = _DEFAULT_RUNTIME_IMAGE,
     min_replicas: int = 1,
     max_replicas: int = 1,
     cpu_requests: str = "2",
@@ -75,57 +84,71 @@ def deploy_embedding_model(
             "namespace": namespace,
         },
         "spec": {
-            "containers": [{
-                "name": "kserve-container",
-                "image": runtime_image,
-                "args": [
-                    "--model", model_name,
-                    "--task", "embedding",
-                    "--port", "8080",
-                    "--dtype", "float16",
-                    "--max-model-len", str(max_model_len),
-                ],
-                "env": [
-                    {"name": "HF_HOME", "value": "/tmp/hf_home"},
-                    {"name": "HUGGINGFACE_HUB_CACHE", "value": "/tmp/hf_home"},
-                    {"name": "HF_HUB_OFFLINE", "value": "0"},
-                    {"name": "TRANSFORMERS_OFFLINE", "value": "0"},
-                ],
-                "ports": [{"containerPort": 8080, "protocol": "TCP"}],
-                "resources": {
-                    "requests": {
-                        "cpu": cpu_requests,
-                        "memory": memory_requests,
-                        **gpu_resources,
+            "containers": [
+                {
+                    "name": "kserve-container",
+                    "image": runtime_image,
+                    "args": [
+                        "--model",
+                        model_name,
+                        "--task",
+                        "embedding",
+                        "--port",
+                        "8080",
+                        "--dtype",
+                        "float16",
+                        "--max-model-len",
+                        str(max_model_len),
+                    ],
+                    "env": [
+                        {"name": "HF_HOME", "value": "/tmp/hf_home"},
+                        {"name": "HUGGINGFACE_HUB_CACHE", "value": "/tmp/hf_home"},
+                        {"name": "HF_HUB_OFFLINE", "value": "0"},
+                        {"name": "TRANSFORMERS_OFFLINE", "value": "0"},
+                    ],
+                    "ports": [{"containerPort": 8080, "protocol": "TCP"}],
+                    "resources": {
+                        "requests": {
+                            "cpu": cpu_requests,
+                            "memory": memory_requests,
+                            **gpu_resources,
+                        },
+                        "limits": {
+                            "cpu": cpu_limits,
+                            "memory": memory_limits,
+                            **gpu_resources,
+                        },
                     },
-                    "limits": {
-                        "cpu": cpu_limits,
-                        "memory": memory_limits,
-                        **gpu_resources,
-                    },
-                },
-            }],
+                }
+            ],
             "supportedModelFormats": [{"name": "vLLM", "version": "1"}],
         },
     }
 
     try:
         custom_api.get_namespaced_custom_object(
-            group="serving.kserve.io", version="v1alpha1",
-            namespace=namespace, plural="servingruntimes",
+            group="serving.kserve.io",
+            version="v1alpha1",
+            namespace=namespace,
+            plural="servingruntimes",
             name=serving_runtime_name,
         )
         custom_api.patch_namespaced_custom_object(
-            group="serving.kserve.io", version="v1alpha1",
-            namespace=namespace, plural="servingruntimes",
-            name=serving_runtime_name, body=serving_runtime,
+            group="serving.kserve.io",
+            version="v1alpha1",
+            namespace=namespace,
+            plural="servingruntimes",
+            name=serving_runtime_name,
+            body=serving_runtime,
         )
         print(f"ServingRuntime '{serving_runtime_name}' updated.")
     except kclient.rest.ApiException as e:
         if e.status == 404:
             custom_api.create_namespaced_custom_object(
-                group="serving.kserve.io", version="v1alpha1",
-                namespace=namespace, plural="servingruntimes",
+                group="serving.kserve.io",
+                version="v1alpha1",
+                namespace=namespace,
+                plural="servingruntimes",
                 body=serving_runtime,
             )
             print(f"ServingRuntime '{serving_runtime_name}' created.")
@@ -169,21 +192,28 @@ def deploy_embedding_model(
 
     try:
         custom_api.get_namespaced_custom_object(
-            group="serving.kserve.io", version="v1beta1",
-            namespace=namespace, plural="inferenceservices",
+            group="serving.kserve.io",
+            version="v1beta1",
+            namespace=namespace,
+            plural="inferenceservices",
             name=isvc_name,
         )
         custom_api.patch_namespaced_custom_object(
-            group="serving.kserve.io", version="v1beta1",
-            namespace=namespace, plural="inferenceservices",
-            name=isvc_name, body=isvc,
+            group="serving.kserve.io",
+            version="v1beta1",
+            namespace=namespace,
+            plural="inferenceservices",
+            name=isvc_name,
+            body=isvc,
         )
         print(f"InferenceService '{isvc_name}' updated.")
     except kclient.rest.ApiException as e:
         if e.status == 404:
             custom_api.create_namespaced_custom_object(
-                group="serving.kserve.io", version="v1beta1",
-                namespace=namespace, plural="inferenceservices",
+                group="serving.kserve.io",
+                version="v1beta1",
+                namespace=namespace,
+                plural="inferenceservices",
                 body=isvc,
             )
             print(f"InferenceService '{isvc_name}' created.")
@@ -202,19 +232,13 @@ def deploy_embedding_model(
             name=isvc_name,
         )
         conditions = obj.get("status", {}).get("conditions", [])
-        ready = any(
-            c.get("type") == "Ready" and c.get("status") == "True"
-            for c in conditions
-        )
+        ready = any(c.get("type") == "Ready" and c.get("status") == "True" for c in conditions)
         if ready:
             url = obj.get("status", {}).get("url", "")
             print(f"Embedding InferenceService ready: {url}")
             return url
 
-    raise TimeoutError(
-        f"Embedding InferenceService '{isvc_name}' did not become ready "
-        "within 15 minutes."
-    )
+    raise TimeoutError(f"Embedding InferenceService '{isvc_name}' did not become ready within 15 minutes.")
 
 
 if __name__ == "__main__":

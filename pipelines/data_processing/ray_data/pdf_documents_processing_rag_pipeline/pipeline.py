@@ -14,14 +14,16 @@ Embedding supports two modes: local sentence-transformers or a deployed service.
 S3 credentials are read from a Kubernetes Secret (not pipeline parameters).
 """
 
-from kfp import dsl
-from kfp import kubernetes
-
+from kfp import dsl, kubernetes
 from kfp_components.components.data_processing.download_model import download_model
 from kfp_components.components.data_processing.ingest_to_milvus import ingest_to_milvus
 from kfp_components.components.data_processing.parse_and_chunk import parse_and_chunk
 from kfp_components.components.deployment.deploy_embedding_model import deploy_embedding_model
 from kfp_components.components.deployment.model_deployment import model_deployment
+
+_DEFAULT_EMBEDDING_RUNTIME_IMAGE = (
+    "registry.redhat.io/rhaiis/vllm-cuda-rhel9@sha256:094db84a1da5e8a575d0c9eade114fa30f4a2061064a338e3e032f3578f8082a"
+)
 
 
 @dsl.pipeline(
@@ -65,7 +67,7 @@ def rag_multistep_pipeline(
     embedding_endpoint: str = "",  # If empty, uses local model; else uses deployed service
     embedding_model: str = "ibm-granite/granite-embedding-125m-english",
     embedding_dim: int = 768,
-    embedding_runtime_image: str = "registry.redhat.io/rhaiis/vllm-cuda-rhel9@sha256:094db84a1da5e8a575d0c9eade114fa30f4a2061064a338e3e032f3578f8082a",
+    embedding_runtime_image: str = _DEFAULT_EMBEDDING_RUNTIME_IMAGE,
     embedding_gpu_count: int = 1,
     # Milvus
     milvus_host: str = "milvus-milvus.milvus.svc.cluster.local",
@@ -80,6 +82,7 @@ def rag_multistep_pipeline(
     max_model_len: int = 4096,
     gpu_count: int = 1,
 ):
+    """Multi-step RAG pipeline: parse PDFs, ingest into Milvus, deploy LLM."""
     # Step 1: Parse & chunk PDFs -> S3
     chunk_task = parse_and_chunk(
         pvc_name=pvc_name,

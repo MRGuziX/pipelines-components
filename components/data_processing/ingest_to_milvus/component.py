@@ -83,13 +83,10 @@ def ingest_to_milvus(
                     all_chunks.append(json.loads(line))
             file_count += 1
 
-    print(f"Read {len(all_chunks)} chunks from {file_count} JSONL files "
-          f"in s3://{s3_bucket}/{s3_prefix}/")
+    print(f"Read {len(all_chunks)} chunks from {file_count} JSONL files in s3://{s3_bucket}/{s3_prefix}/")
 
     if not all_chunks:
-        raise FileNotFoundError(
-            f"No chunks found in s3://{s3_bucket}/{s3_prefix}/"
-        )
+        raise FileNotFoundError(f"No chunks found in s3://{s3_bucket}/{s3_prefix}/")
 
     # --- Setup Milvus collection ---
     uri = f"http://{milvus_host}:{milvus_port}"
@@ -101,12 +98,8 @@ def ingest_to_milvus(
 
     schema = CollectionSchema(
         fields=[
-            FieldSchema(
-                name="id", dtype=DataType.INT64, is_primary=True, auto_id=True
-            ),
-            FieldSchema(
-                name="source_file", dtype=DataType.VARCHAR, max_length=512
-            ),
+            FieldSchema(name="id", dtype=DataType.INT64, is_primary=True, auto_id=True),
+            FieldSchema(name="source_file", dtype=DataType.VARCHAR, max_length=512),
             FieldSchema(name="chunk_index", dtype=DataType.INT64),
             FieldSchema(name="text", dtype=DataType.VARCHAR, max_length=32768),
             FieldSchema(
@@ -126,9 +119,7 @@ def ingest_to_milvus(
         metric_type="COSINE",
         params={"nlist": 128},
     )
-    client.create_index(
-        collection_name=collection_name, index_params=index_params
-    )
+    client.create_index(collection_name=collection_name, index_params=index_params)
     print(f"Collection '{collection_name}' created (dim={embedding_dim}).")
 
     # --- Setup embedding ---
@@ -189,10 +180,7 @@ def ingest_to_milvus(
 
         if (i // milvus_batch_size) % 10 == 0:
             elapsed = time.time() - start_time
-            print(
-                f"  Inserted {total_inserted}/{len(all_chunks)} "
-                f"({elapsed:.1f}s)"
-            )
+            print(f"  Inserted {total_inserted}/{len(all_chunks)} ({elapsed:.1f}s)")
 
     # Load collection for searching
     client.load_collection(collection_name)
