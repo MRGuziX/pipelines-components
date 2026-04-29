@@ -4,7 +4,7 @@ RUFF ?= $(UVRUN) ruff
 YAMLLINT ?= $(UVRUN) yamllint
 PYTEST ?= $(UVRUN) pytest
 
-.PHONY: format fix lint lint-format lint-python lint-markdown lint-yaml lint-imports test test-coverage component pipeline tests readme sync-packages
+.PHONY: format fix lint lint-format lint-python lint-markdown lint-yaml lint-imports test test-coverage component pipeline tests readme sync-packages requirements
 
 format:
 	$(RUFF) format components pipelines scripts
@@ -105,3 +105,7 @@ readme:
 
 sync-packages:
 	@$(UVRUN) python -m scripts.sync_packages.sync_packages
+
+requirements:
+	uv export --frozen --no-dev --no-editable --no-annotate \
+		| grep -vx '\.' > requirements.txt

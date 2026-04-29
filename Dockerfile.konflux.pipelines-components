@@ -1,0 +1,23 @@
+FROM registry.redhat.io/ubi9/python-311@sha256:ba0eda75d7915f6df1ba8c5786ac6564e6cc815c533efab68b0442284a6edc2f
+
+WORKDIR /app
+
+USER root
+
+COPY requirements.txt ./
+RUN pip install --no-cache-dir -r requirements.txt
+
+COPY pyproject.toml __init__.py ./
+COPY components/ components/
+COPY pipelines/ pipelines/
+COPY scripts/ scripts/
+COPY utils/ utils/
+
+RUN chown -R 1001:1001 /app
+USER 1001
+
+RUN pip install --no-cache-dir --no-deps .
+
+RUN python -m scripts.generate_managed_pipelines.generate_managed_pipelines
+
+CMD ["python", "-m", "scripts.init_managed_pipelines.init_managed_pipelines"]
