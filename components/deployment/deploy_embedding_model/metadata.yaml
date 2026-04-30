@@ -10,7 +10,7 @@ dependencies:
       version: ">=2.15.2"
   external_services:
     - name: OpenShift AI (KServe)
-      version: ">=2.10"
+      version: ">=2.10.0"
 tags:
   - embeddings
   - model_serving

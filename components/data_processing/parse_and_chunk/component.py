@@ -574,7 +574,7 @@ def parse_and_chunk(
     # Secrets or ConfigMaps (service account lacks permissions for both).
     script_b64 = base64.b64encode(_DOCLING_CHUNK_PROCESS_PY.encode()).decode()
 
-    shared_mount = V1VolumeMount(pvc_mount_path, name="shared-data")
+    shared_mount = V1VolumeMount(pvc_mount_path, name="shared-data", read_only=True)
     data_volume = V1Volume(
         name="shared-data",
         persistent_volume_claim=V1PersistentVolumeClaimVolumeSource(
@@ -598,7 +598,7 @@ def parse_and_chunk(
         envs={
             "RAY_DEFAULT_OBJECT_STORE_MEMORY_PROPORTION": "0.1",
             "RAY_OBJECT_STORE_MEMORY": "78643200",
-            "HF_HOME": f"{pvc_mount_path}/.hf_cache",
+            "HF_HOME": "/tmp/.hf_cache",
         },
     )
 

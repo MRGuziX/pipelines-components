@@ -41,7 +41,7 @@ Uses vLLM with ``--task embedding`` on GPU to serve an OpenAI-compatible ``/v1/e
   - Kubeflow:
     - Name: Pipelines, Version: >=2.15.2
   - External Services:
-    - Name: OpenShift AI (KServe), Version: >=2.10
+    - Name: OpenShift AI (KServe), Version: >=2.10.0
 - **Tags**:
   - embeddings
   - model_serving
