@@ -1,3 +1,4 @@
+---
 name: lora_evalhub_pipeline
 stability: experimental
 dependencies:
@@ -26,4 +27,4 @@ tags:
   - pipeline
 lastVerified: 2026-05-20T00:00:00Z
 links:
-  documentation: https://github.com/kubeflow/trainer
+  documentation: https://github.com/opendatahub-io/eval-hub

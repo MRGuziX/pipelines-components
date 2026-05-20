@@ -6,13 +6,10 @@ serve the fine-tuned model from the workspace PVC, submits benchmarks to
 Eval Hub, and polls for results. Both resources are cleaned up after evaluation.
 """
 
-import kfp
 from kfp import dsl
 
-
 RHOAI_VLLM_IMAGE = (
-    "registry.redhat.io/rhaii/vllm-cuda-rhel9"
-    "@sha256:ad06abf3bb5235ebb5b2df84cd1b9fd09e823f0ff2eebfc82bb4590275ccfe0b"
+    "registry.redhat.io/rhaii/vllm-cuda-rhel9@sha256:ad06abf3bb5235ebb5b2df84cd1b9fd09e823f0ff2eebfc82bb4590275ccfe0b"
 )
 
 
@@ -47,7 +44,11 @@ def evalhub_evaluator_kserve(
     gpu_count: int = 1,
     memory: str = "8Gi",
     cpu: str = "2",
-    runtime_image: str = RHOAI_VLLM_IMAGE,
+    runtime_image: str = (  # noqa: E501
+        "registry.redhat.io/rhaii/vllm-cuda-rhel9@sha256:ad06abf3bb5235ebb5b2df84cd1b9fd09e823f0ff2eebfc82bb4590275ccfe0b"
+    ),
+    trust_remote_code: bool = False,
+    verify_tls: bool = False,
     isvc_ready_timeout: int = 600,
 ):
     """Evaluate a model via Eval Hub with a KServe InferenceService.
@@ -58,12 +59,14 @@ def evalhub_evaluator_kserve(
     benchmark evaluation. Both resources are cleaned up after completion.
 
     Args:
+        output_metrics: KFP Metrics artifact for evaluation scores.
+        output_results: KFP Artifact for full evaluation results JSON.
         evalhub_url: Eval Hub API endpoint (empty = skip evaluation).
         benchmarks: List of benchmark specs [{"provider_id": "...", "id": "..."}].
         collection_id: Eval Hub collection ID (alternative to benchmarks list).
         pvc_mount_path: Workspace PVC mount path (triggers KFP PVC mount).
         model_artifact: Model artifact from upstream training step.
-        model_path: HuggingFace model ID or local path (if no artifact).
+        model_path: Local filesystem path to model directory (if no artifact).
         evalhub_tenant: Eval Hub tenant / namespace header (X-Tenant).
         evalhub_auth_token: Bearer token for Eval Hub auth.
         evalhub_model_name: Display name for the model in Eval Hub.
@@ -76,6 +79,8 @@ def evalhub_evaluator_kserve(
         memory: Pod memory request/limit for the predictor (e.g. "8Gi", "32Gi").
         cpu: CPU request/limit for the predictor (e.g. "2").
         runtime_image: Container image for the ServingRuntime (RHOAI vLLM default).
+        trust_remote_code: Pass --trust-remote-code to vLLM (enables arbitrary code from model repos).
+        verify_tls: Verify TLS certificates for Eval Hub API calls (False for self-signed certs).
         isvc_ready_timeout: Max seconds to wait for InferenceService readiness.
     """
     import json
@@ -112,8 +117,12 @@ def evalhub_evaluator_kserve(
             "Content-Type": "application/json",
         }
         resp = requests.request(
-            method, url, headers=headers,
-            json=body, verify=SA_CA_PATH, timeout=30,
+            method,
+            url,
+            headers=headers,
+            json=body,
+            verify=SA_CA_PATH,
+            timeout=30,
         )
         if resp.status_code >= 400:
             logger.error(f"K8s API {method} {path} -> {resp.status_code}: {resp.text[:500]}")
@@ -123,6 +132,7 @@ def evalhub_evaluator_kserve(
         hostname = os.environ.get("HOSTNAME", "")
         if not hostname:
             import socket
+
             hostname = socket.gethostname()
         resp = _k8s_api("GET", f"/api/v1/namespaces/{namespace}/pods/{hostname}")
         if resp.status_code == 200:
@@ -151,13 +161,11 @@ def evalhub_evaluator_kserve(
             for vm in c.get("volumeMounts", []):
                 vol_name = vm["name"]
                 mount_path = vm["mountPath"]
-                if vol_name in pvc_volumes and model_path.startswith(mount_path):
+                normalized_mount = mount_path.rstrip("/") + "/"
+                if vol_name in pvc_volumes and (model_path + "/").startswith(normalized_mount):
                     return pvc_volumes[vol_name], mount_path
 
-        raise RuntimeError(
-            f"Could not find workspace PVC for model path {model_path}. "
-            f"PVC volumes: {pvc_volumes}"
-        )
+        raise RuntimeError(f"Could not find workspace PVC for model path {model_path}. PVC volumes: {pvc_volumes}")
 
     # =========================================================================
     # KServe resource helpers
@@ -165,7 +173,14 @@ def evalhub_evaluator_kserve(
     KSERVE_SR_API = "/apis/serving.kserve.io/v1alpha1"
     KSERVE_ISVC_API = "/apis/serving.kserve.io/v1beta1"
 
-    def _create_serving_runtime(namespace, name, image, served_model_name):
+    def _create_serving_runtime(namespace, name, image, served_model_name, enable_trust_remote_code=False):
+        vllm_args = [
+            "--port=8080",
+            "--model=/mnt/models",
+            f"--served-model-name={served_model_name}",
+        ]
+        if enable_trust_remote_code:
+            vllm_args.append("--trust-remote-code")
         sr = {
             "apiVersion": "serving.kserve.io/v1alpha1",
             "kind": "ServingRuntime",
@@ -187,21 +202,18 @@ def evalhub_evaluator_kserve(
                     "prometheus.io/path": "/metrics",
                     "prometheus.io/port": "8080",
                 },
-                "containers": [{
-                    "name": "kserve-container",
-                    "image": image,
-                    "command": ["python", "-m", "vllm.entrypoints.openai.api_server"],
-                    "args": [
-                        "--port=8080",
-                        "--model=/mnt/models",
-                        f"--served-model-name={served_model_name}",
-                        "--trust-remote-code",
-                    ],
-                    "env": [
-                        {"name": "HF_HOME", "value": "/tmp/hf_home"},
-                    ],
-                    "ports": [{"containerPort": 8080, "protocol": "TCP"}],
-                }],
+                "containers": [
+                    {
+                        "name": "kserve-container",
+                        "image": image,
+                        "command": ["python", "-m", "vllm.entrypoints.openai.api_server"],
+                        "args": vllm_args,
+                        "env": [
+                            {"name": "HF_HOME", "value": "/tmp/hf_home"},
+                        ],
+                        "ports": [{"containerPort": 8080, "protocol": "TCP"}],
+                    }
+                ],
                 "multiModel": False,
                 "supportedModelFormats": [
                     {"autoSelect": True, "name": "vLLM"},
@@ -214,8 +226,7 @@ def evalhub_evaluator_kserve(
         logger.info(f"Created ServingRuntime {name}")
         return resp.json()
 
-    def _create_inference_service(namespace, name, runtime_name, pvc_name,
-                                  model_relative_path, n_gpu, mem, n_cpu):
+    def _create_inference_service(namespace, name, runtime_name, pvc_name, model_relative_path, n_gpu, mem, n_cpu):
         storage_uri = f"pvc://{pvc_name}/{model_relative_path}"
 
         isvc = {
@@ -278,7 +289,7 @@ def evalhub_evaluator_kserve(
                         duration = time.time() - start
                         logger.info(f"InferenceService {name} ready in {duration:.1f}s")
                         return duration
-                reasons = [f"{c['type']}={c.get('status','?')}({c.get('reason','')})" for c in conditions]
+                reasons = [f"{c['type']}={c.get('status', '?')}({c.get('reason', '')})" for c in conditions]
                 logger.info(f"  ISVC conditions: {', '.join(reasons) if reasons else 'none yet'}")
             time.sleep(15)
         raise TimeoutError(f"InferenceService {name} did not become Ready within {timeout_s}s")
@@ -307,8 +318,15 @@ def evalhub_evaluator_kserve(
 
     def _cleanup_kserve(namespace, sr_name, isvc_name):
         logger.info(f"Cleaning up InferenceService {isvc_name} and ServingRuntime {sr_name}")
-        _k8s_api("DELETE", f"{KSERVE_ISVC_API}/namespaces/{namespace}/inferenceservices/{isvc_name}")
-        _k8s_api("DELETE", f"{KSERVE_SR_API}/namespaces/{namespace}/servingruntimes/{sr_name}")
+        for kind, api, name in [
+            ("InferenceService", KSERVE_ISVC_API, isvc_name),
+            ("ServingRuntime", KSERVE_SR_API, sr_name),
+        ]:
+            resp = _k8s_api("DELETE", f"{api}/namespaces/{namespace}/{kind.lower()}s/{name}")
+            if resp.status_code >= 400 and resp.status_code != 404:
+                logger.warning(f"Failed to delete {kind} {name}: {resp.status_code} {resp.text[:200]}")
+            else:
+                logger.info(f"Deleted {kind} {name}")
         logger.info(f"Cleanup complete for {isvc_name} / {sr_name}")
 
     # =========================================================================
@@ -372,11 +390,11 @@ def evalhub_evaluator_kserve(
 
     model_relative_path = final_model_path
     if final_model_path.startswith(workspace_mount):
-        model_relative_path = final_model_path[len(workspace_mount):].lstrip("/")
+        model_relative_path = final_model_path[len(workspace_mount) :].lstrip("/")
     logger.info(f"Model relative path in PVC: {model_relative_path}")
     logger.info(f"storageUri will be: pvc://{workspace_pvc_name}/{model_relative_path}")
 
-    _create_serving_runtime(namespace, sr_name, runtime_image, resolved_model_name)
+    _create_serving_runtime(namespace, sr_name, runtime_image, resolved_model_name, trust_remote_code)
 
     try:
         _create_inference_service(
@@ -443,7 +461,7 @@ def evalhub_evaluator_kserve(
         logger.info(f"Submitting evaluation job to {submit_url}")
         logger.info(f"Config: {json.dumps(eval_config, indent=2)}")
 
-        resp = requests.post(submit_url, json=eval_config, headers=headers, timeout=30, verify=False)
+        resp = requests.post(submit_url, json=eval_config, headers=headers, timeout=30, verify=verify_tls)
         if resp.status_code not in (200, 201, 202):
             raise RuntimeError(f"Eval Hub returned {resp.status_code}: {resp.text}")
 
@@ -462,7 +480,7 @@ def evalhub_evaluator_kserve(
             time.sleep(evalhub_poll_interval)
 
             try:
-                resp = requests.get(job_url, headers=headers, timeout=30, verify=False)
+                resp = requests.get(job_url, headers=headers, timeout=30, verify=verify_tls)
                 if resp.status_code != 200:
                     logger.warning(f"Poll returned {resp.status_code}, retrying...")
                     continue
@@ -484,7 +502,7 @@ def evalhub_evaluator_kserve(
             logger.error(f"Evaluation timed out after {evalhub_timeout}s")
             try:
                 cancel_url = f"{evalhub_url.rstrip('/')}/api/v1/evaluations/jobs/{job_id}"
-                requests.delete(cancel_url, headers=headers, timeout=10, verify=False)
+                requests.delete(cancel_url, headers=headers, timeout=10, verify=verify_tls)
                 logger.info(f"Cancelled job {job_id}")
             except Exception:
                 pass

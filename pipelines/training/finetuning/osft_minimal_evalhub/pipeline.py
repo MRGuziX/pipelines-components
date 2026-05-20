@@ -31,7 +31,7 @@ PIPELINE_NAME = "osft-pipeline-evalhub-easy"
 
 @dsl.pipeline(
     name=PIPELINE_NAME,
-    description="OSFT pipeline with Eval Hub evaluation (Minimal): 5 leaderboard benchmarks, KServe model serving, minimal config",
+    description="OSFT Eval Hub pipeline (Minimal): 5 leaderboard benchmarks, KServe serving, minimal config",
     pipeline_config=dsl.PipelineConfig(
         workspace=dsl.WorkspaceConfig(
             size=PVC_SIZE,
@@ -49,7 +49,6 @@ def osft_pipeline_evalhub_easy(
     # KEY PARAMETERS (Required/Important) - Sorted by step
     # =========================================================================
     phase_01_dataset_man_data_uri: str,
-    phase_03_eval_opt_evalhub_url: str = "",
     phase_02_train_man_train_batch: int = 128,
     phase_02_train_man_train_epochs: int = 1,
     phase_02_train_man_train_gpu: int = 1,
@@ -57,6 +56,7 @@ def osft_pipeline_evalhub_easy(
     phase_02_train_man_train_tokens: int = 64000,
     phase_02_train_man_train_unfreeze: float = 0.25,
     phase_02_train_man_train_workers: int = 1,
+    phase_03_eval_opt_evalhub_url: str = "",
     phase_03_eval_opt_mlflow_experiment: str = "",
     phase_03_eval_opt_kserve_gpu_count: int = 1,
     phase_03_eval_opt_kserve_cpu: str = "2",
@@ -85,25 +85,45 @@ def osft_pipeline_evalhub_easy(
     mmlu_pro, musr, math_hard) via KServe model serving — all public datasets,
     no HF token required, no trust_remote_code issues.
 
+    Prerequisites: Eval Hub and KServe must be installed on the cluster.
+    The pipeline ServiceAccount needs RBAC permissions for
+    inferenceservices.serving.kserve.io and servingruntimes.serving.kserve.io
+    resources (create, delete, get, list, patch). The workspace PVC must use
+    ReadWriteMany access mode (NFS-backed) so the KServe predictor pod can
+    mount the model. The eval component uses the in-cluster ServiceAccount
+    token for K8s API access.
+
     Args:
         phase_01_dataset_man_data_uri: Dataset location (hf://, s3://, https://).
+        phase_01_dataset_opt_subset: Limit to first N examples (0 = all).
         phase_02_train_man_train_batch: Effective batch size (samples per optimizer step).
         phase_02_train_man_train_epochs: Number of training epochs.
         phase_02_train_man_train_gpu: GPUs per worker.
         phase_02_train_man_train_model: Base model (HuggingFace ID or path).
         phase_02_train_man_train_tokens: Max tokens per GPU (memory cap).
-        phase_02_train_man_train_unfreeze: Fraction to unfreeze (0.1=minimal, 0.25=balanced, 0.5=strong).
+        phase_02_train_man_train_unfreeze: Fraction to unfreeze
+            (0.1=minimal, 0.25=balanced, 0.5=strong).
         phase_02_train_man_train_workers: Number of training pods.
-        phase_03_eval_opt_evalhub_url: Eval Hub API endpoint URL (empty = skip evaluation).
-        phase_03_eval_opt_mlflow_experiment: MLflow experiment name (non-empty = enable, empty = disabled).
-        phase_03_eval_opt_kserve_gpu_count: GPUs for the KServe InferenceService predictor.
-        phase_03_eval_opt_kserve_cpu: CPU for the InferenceService predictor.
-        phase_03_eval_opt_kserve_memory: Pod memory for the InferenceService predictor.
+        phase_02_train_opt_cpu: CPU cores per worker.
+        phase_02_train_opt_env_vars: Env vars (KEY=VAL,...).
+        phase_02_train_opt_learning_rate: Learning rate. 5e-6 for OSFT.
+        phase_02_train_opt_max_seq_len: Max sequence length in tokens.
+        phase_02_train_opt_memory: RAM per worker.
+        phase_02_train_opt_runtime: ClusterTrainingRuntime name.
+        phase_02_train_opt_use_liger: Enable Liger kernel optimizations.
+        phase_03_eval_opt_evalhub_url: Eval Hub API endpoint URL
+            (empty = skip evaluation).
+        phase_03_eval_opt_mlflow_experiment: MLflow experiment name
+            (non-empty = enable, empty = disabled).
+        phase_03_eval_opt_kserve_gpu_count: GPUs for the KServe predictor.
+        phase_03_eval_opt_kserve_cpu: CPU for the KServe predictor.
+        phase_03_eval_opt_kserve_memory: Pod memory for the KServe predictor.
         phase_03_eval_opt_timeout: Max seconds to wait for evaluation.
         phase_04_registry_man_address: Model Registry address (empty = skip).
         phase_04_registry_man_reg_author: Author name for the registered model.
         phase_04_registry_man_reg_name: Model name in registry.
         phase_04_registry_man_reg_version: Semantic version.
+        phase_04_registry_opt_port: Model registry server port.
     """
     # =========================================================================
     # Stage 1: Dataset Download

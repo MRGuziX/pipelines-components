@@ -33,7 +33,7 @@ PIPELINE_NAME = "osft-pipeline-evalhub"
 
 @dsl.pipeline(
     name=PIPELINE_NAME,
-    description="OSFT pipeline with Eval Hub evaluation via KServe: benchmarks via Eval Hub, results optionally tracked in MLflow",
+    description="OSFT pipeline with Eval Hub evaluation via KServe, results optionally tracked in MLflow",
     pipeline_config=dsl.PipelineConfig(
         workspace=dsl.WorkspaceConfig(
             size=PVC_SIZE,
@@ -51,7 +51,6 @@ def osft_pipeline_evalhub(
     # KEY PARAMETERS (Required/Important) - Sorted by step
     # =========================================================================
     phase_01_dataset_man_data_uri: str,
-    phase_03_eval_opt_evalhub_url: str = "",
     phase_02_train_man_train_batch: int = 128,
     phase_02_train_man_train_epochs: int = 1,
     phase_02_train_man_train_gpu: int = 1,
@@ -59,6 +58,7 @@ def osft_pipeline_evalhub(
     phase_02_train_man_train_tokens: int = 64000,
     phase_02_train_man_train_unfreeze: float = 0.25,
     phase_02_train_man_train_workers: int = 1,
+    phase_03_eval_opt_evalhub_url: str = "",
     phase_03_eval_opt_collection: str = "",
     phase_04_registry_man_address: str = "",
     phase_04_registry_man_reg_author: str = "pipeline",
@@ -114,29 +114,75 @@ def osft_pipeline_evalhub(
        model serving. Results optionally tracked in MLflow.
     4) Model Registry - Registers trained model to Kubeflow Model Registry
 
+    Prerequisites: Eval Hub and KServe must be installed on the cluster.
+    The pipeline ServiceAccount needs RBAC permissions for
+    inferenceservices.serving.kserve.io and servingruntimes.serving.kserve.io
+    resources (create, delete, get, list, patch). The workspace PVC must use
+    ReadWriteMany access mode (NFS-backed) so the KServe predictor pod can
+    mount the model. The eval component uses the in-cluster ServiceAccount
+    token for K8s API access.
+
+    Known limitations: Some HuggingFace datasets used by benchmarks require
+    trust_remote_code=True. The 5 default leaderboard benchmarks (ifeval,
+    bbh, mmlu_pro, musr, math_hard) work without it. For other benchmarks,
+    a custom provider ConfigMap with HF_DATASETS_TRUST_REMOTE_CODE=1 must
+    be configured. The base_model_name parameter is needed for tokenizer
+    resolution since the served model is a local checkpoint.
+
     Args:
         phase_01_dataset_man_data_uri: Dataset location (hf://, s3://, https://).
+        phase_01_dataset_opt_subset: Limit to first N examples (0 = all).
         phase_02_train_man_train_batch: Effective batch size (samples per optimizer step).
         phase_02_train_man_train_epochs: Number of training epochs.
         phase_02_train_man_train_gpu: GPUs per worker.
         phase_02_train_man_train_model: Base model (HuggingFace ID or path).
         phase_02_train_man_train_tokens: Max tokens per GPU (memory cap).
-        phase_02_train_man_train_unfreeze: Fraction to unfreeze (0.1=minimal, 0.25=balanced, 0.5=strong).
+        phase_02_train_man_train_unfreeze: Fraction to unfreeze
+            (0.1=minimal, 0.25=balanced, 0.5=strong).
         phase_02_train_man_train_workers: Number of training pods.
-        phase_03_eval_opt_evalhub_url: Eval Hub API endpoint URL (empty = skip evaluation).
-        phase_03_eval_opt_collection: Eval Hub collection ID (overrides benchmarks list).
-            Available: "leaderboard-v2", "safety-and-fairness-v1", "toxicity-and-ethical-principles".
-        phase_03_eval_opt_benchmarks: Benchmarks to evaluate. Defaults to 5 leaderboard benchmarks
-            (ifeval, bbh, mmlu_pro, musr, math_hard) that work without HF token or custom providers.
-        phase_03_eval_opt_mlflow_experiment: MLflow experiment name (non-empty = enable, empty = disabled).
+        phase_02_train_opt_annotations: K8s annotations (key=val,...).
+        phase_02_train_opt_cpu: CPU cores per worker.
+        phase_02_train_opt_env_vars: Env vars (KEY=VAL,...).
+        phase_02_train_opt_labels: K8s labels (key=val,...).
+        phase_02_train_opt_learning_rate: Learning rate. 5e-6 for OSFT.
+        phase_02_train_opt_lr_scheduler: LR schedule (cosine, linear).
+        phase_02_train_opt_lr_scheduler_kwargs: Extra scheduler params
+            (key=val,...).
+        phase_02_train_opt_lr_warmup: Warmup steps before full LR.
+        phase_02_train_opt_max_seq_len: Max sequence length in tokens.
+        phase_02_train_opt_memory: RAM per worker.
+        phase_02_train_opt_num_procs: Processes per worker (auto = per GPU).
+        phase_02_train_opt_processed_data: True if dataset already tokenized.
+        phase_02_train_opt_runtime: ClusterTrainingRuntime name.
+        phase_02_train_opt_save_epoch: Save checkpoint at each epoch.
+        phase_02_train_opt_save_final: Save final checkpoint after all epochs.
+        phase_02_train_opt_seed: Random seed for reproducibility.
+        phase_02_train_opt_target_patterns: Module patterns to unfreeze
+            (empty=auto).
+        phase_02_train_opt_unmask: Unmask all tokens (False=assistant only).
+        phase_02_train_opt_use_liger: Enable Liger kernel optimizations.
+        phase_03_eval_opt_evalhub_url: Eval Hub API endpoint URL
+            (empty = skip evaluation).
+        phase_03_eval_opt_collection: Eval Hub collection ID
+            (overrides benchmarks list). Available: "leaderboard-v2",
+            "safety-and-fairness-v1", "toxicity-and-ethical-principles".
+        phase_03_eval_opt_benchmarks: Benchmarks to evaluate. Defaults to 5
+            leaderboard benchmarks (ifeval, bbh, mmlu_pro, musr, math_hard)
+            that work without HF token or custom providers.
+        phase_03_eval_opt_mlflow_experiment: MLflow experiment name
+            (non-empty = enable, empty = disabled).
         phase_03_eval_opt_timeout: Max seconds to wait for evaluation.
-        phase_03_eval_opt_kserve_gpu_count: GPUs for the KServe InferenceService predictor.
-        phase_03_eval_opt_kserve_cpu: CPU for the InferenceService predictor.
-        phase_03_eval_opt_kserve_memory: Pod memory for the InferenceService predictor.
+        phase_03_eval_opt_kserve_gpu_count: GPUs for the KServe predictor.
+        phase_03_eval_opt_kserve_cpu: CPU for the KServe predictor.
+        phase_03_eval_opt_kserve_memory: Pod memory for the KServe predictor.
         phase_04_registry_man_address: Model Registry address (empty = skip).
         phase_04_registry_man_reg_author: Author name for the registered model.
         phase_04_registry_man_reg_name: Model name in registry.
         phase_04_registry_man_reg_version: Semantic version.
+        phase_04_registry_opt_description: Model description.
+        phase_04_registry_opt_format_name: Model format (pytorch, onnx).
+        phase_04_registry_opt_format_version: Model format version.
+        phase_04_registry_opt_port: Model registry server port.
     """
     # =========================================================================
     # Stage 1: Dataset Download

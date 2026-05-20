@@ -33,7 +33,7 @@ PIPELINE_NAME = "lora-pipeline-evalhub"
 
 @dsl.pipeline(
     name=PIPELINE_NAME,
-    description="LoRA pipeline with Eval Hub evaluation via KServe: benchmarks via Eval Hub, results optionally tracked in MLflow",
+    description="LoRA pipeline with Eval Hub evaluation via KServe, results optionally tracked in MLflow",
     pipeline_config=dsl.PipelineConfig(
         workspace=dsl.WorkspaceConfig(
             size=PVC_SIZE,
@@ -51,7 +51,6 @@ def lora_pipeline_evalhub(
     # KEY PARAMETERS (Required/Important) - Sorted by step
     # =========================================================================
     phase_01_dataset_man_data_uri: str,
-    phase_03_eval_opt_evalhub_url: str = "",
     phase_02_train_man_train_batch: int = 128,
     phase_02_train_man_train_epochs: int = 2,
     phase_02_train_man_train_gpu: int = 1,
@@ -59,6 +58,7 @@ def lora_pipeline_evalhub(
     phase_02_train_man_train_tokens: int = 32000,
     phase_02_train_man_lora_r: int = 16,
     phase_02_train_man_lora_alpha: int = 32,
+    phase_03_eval_opt_evalhub_url: str = "",
     phase_03_eval_opt_collection: str = "",
     phase_04_registry_man_address: str = "",
     phase_04_registry_man_reg_author: str = "pipeline",
@@ -136,8 +136,24 @@ def lora_pipeline_evalhub(
        model serving. Results optionally tracked in MLflow.
     4) Model Registry - Registers trained model to Kubeflow Model Registry
 
+    Prerequisites: Eval Hub and KServe must be installed on the cluster.
+    The pipeline ServiceAccount needs RBAC permissions for
+    inferenceservices.serving.kserve.io and servingruntimes.serving.kserve.io
+    resources (create, delete, get, list, patch). The workspace PVC must use
+    ReadWriteMany access mode (NFS-backed) so the KServe predictor pod can
+    mount the model. The eval component uses the in-cluster ServiceAccount
+    token for K8s API access.
+
+    Known limitations: Some HuggingFace datasets used by benchmarks require
+    trust_remote_code=True. The 5 default leaderboard benchmarks (ifeval,
+    bbh, mmlu_pro, musr, math_hard) work without it. For other benchmarks,
+    a custom provider ConfigMap with HF_DATASETS_TRUST_REMOTE_CODE=1 must
+    be configured. The base_model_name parameter is needed for tokenizer
+    resolution since the served model is a local checkpoint.
+
     Args:
         phase_01_dataset_man_data_uri: Dataset location (hf://, s3://, https://).
+        phase_01_dataset_opt_subset: Limit to first N examples (0 = all).
         phase_02_train_man_train_batch: Effective batch size (samples per optimizer step).
         phase_02_train_man_train_epochs: Number of training epochs.
         phase_02_train_man_train_gpu: GPUs per worker.
@@ -145,20 +161,71 @@ def lora_pipeline_evalhub(
         phase_02_train_man_train_tokens: Max tokens per GPU (memory cap).
         phase_02_train_man_lora_r: Rank of the low-rank matrices (4, 8, 16, 32, 64).
         phase_02_train_man_lora_alpha: Scaling factor (typically 2x lora_r).
-        phase_03_eval_opt_evalhub_url: Eval Hub API endpoint URL (empty = skip evaluation).
-        phase_03_eval_opt_collection: Eval Hub collection ID (overrides benchmarks list).
-            Available: "leaderboard-v2", "safety-and-fairness-v1", "toxicity-and-ethical-principles".
-        phase_03_eval_opt_benchmarks: Benchmarks to evaluate. Defaults to 5 leaderboard benchmarks
-            (ifeval, bbh, mmlu_pro, musr, math_hard) that work without HF token or custom providers.
-        phase_03_eval_opt_mlflow_experiment: MLflow experiment name (non-empty = enable, empty = disabled).
+        phase_02_train_opt_annotations: K8s annotations (key=val,...).
+        phase_02_train_opt_bf16: Use bfloat16 precision.
+        phase_02_train_opt_cpu: CPU cores per worker.
+        phase_02_train_opt_dataset_type: Dataset format type.
+        phase_02_train_opt_enable_model_splitting: Enable model splitting
+            across GPUs.
+        phase_02_train_opt_env_vars: Env vars (KEY=VAL,...).
+        phase_02_train_opt_eval_steps: Run evaluation every N steps.
+        phase_02_train_opt_field_input: Field name for input in dataset.
+        phase_02_train_opt_field_instruction: Field name for instruction.
+        phase_02_train_opt_field_messages: Field name for messages in dataset.
+        phase_02_train_opt_field_output: Field name for output in dataset.
+        phase_02_train_opt_flash_attention: Enable flash attention.
+        phase_02_train_opt_fp16: Use float16 precision.
+        phase_02_train_opt_grad_accum_steps: Gradient accumulation steps.
+        phase_02_train_opt_labels: K8s labels (key=val,...).
+        phase_02_train_opt_learning_rate: Learning rate. 2e-4 for LoRA.
+        phase_02_train_opt_logging_steps: Log metrics every N steps.
+        phase_02_train_opt_lora_dropout: Dropout rate for LoRA layers.
+        phase_02_train_opt_lora_load_in_4bit: Enable 4-bit quantization.
+        phase_02_train_opt_lora_load_in_8bit: Enable 8-bit quantization.
+        phase_02_train_opt_lora_sample_packing: Pack multiple samples.
+        phase_02_train_opt_lora_target_modules: Modules to apply LoRA
+            (empty=auto-detect).
+        phase_02_train_opt_lora_use_dora: Use Weight-Decomposed LoRA (DoRA).
+        phase_02_train_opt_lora_use_rslora: Use Rank-Stabilized LoRA.
+        phase_02_train_opt_lr_scheduler: LR schedule (cosine, linear).
+        phase_02_train_opt_lr_warmup: Warmup steps before full LR.
+        phase_02_train_opt_max_seq_len: Max sequence length in tokens.
+        phase_02_train_opt_memory: RAM per worker.
+        phase_02_train_opt_micro_batch_size: Micro batch size per GPU.
+        phase_02_train_opt_num_procs: Processes per worker (auto = per GPU).
+        phase_02_train_opt_runtime: ClusterTrainingRuntime name.
+        phase_02_train_opt_save_epoch: Save checkpoint at each epoch.
+        phase_02_train_opt_save_steps: Save checkpoint every N steps.
+        phase_02_train_opt_save_total_limit: Max checkpoints to keep.
+        phase_02_train_opt_seed: Random seed for reproducibility.
+        phase_02_train_opt_tensorboard_log_dir: TensorBoard log directory.
+        phase_02_train_opt_tf32: Enable TF32 on Ampere+ GPUs.
+        phase_02_train_opt_use_liger: Enable Liger kernel optimizations.
+        phase_02_train_opt_wandb_entity: Weights & Biases entity/team.
+        phase_02_train_opt_wandb_project: Weights & Biases project name.
+        phase_02_train_opt_wandb_run_name: Weights & Biases run name.
+        phase_03_eval_opt_evalhub_url: Eval Hub API endpoint URL
+            (empty = skip evaluation).
+        phase_03_eval_opt_collection: Eval Hub collection ID
+            (overrides benchmarks list). Available: "leaderboard-v2",
+            "safety-and-fairness-v1", "toxicity-and-ethical-principles".
+        phase_03_eval_opt_benchmarks: Benchmarks to evaluate. Defaults to 5
+            leaderboard benchmarks (ifeval, bbh, mmlu_pro, musr, math_hard)
+            that work without HF token or custom providers.
+        phase_03_eval_opt_mlflow_experiment: MLflow experiment name
+            (non-empty = enable, empty = disabled).
         phase_03_eval_opt_timeout: Max seconds to wait for evaluation.
-        phase_03_eval_opt_kserve_gpu_count: GPUs for the KServe InferenceService predictor.
-        phase_03_eval_opt_kserve_cpu: CPU for the InferenceService predictor.
-        phase_03_eval_opt_kserve_memory: Pod memory for the InferenceService predictor.
+        phase_03_eval_opt_kserve_gpu_count: GPUs for the KServe predictor.
+        phase_03_eval_opt_kserve_cpu: CPU for the KServe predictor.
+        phase_03_eval_opt_kserve_memory: Pod memory for the KServe predictor.
         phase_04_registry_man_address: Model Registry address (empty = skip).
         phase_04_registry_man_reg_author: Author name for the registered model.
         phase_04_registry_man_reg_name: Model name in registry.
         phase_04_registry_man_reg_version: Semantic version.
+        phase_04_registry_opt_description: Model description.
+        phase_04_registry_opt_format_name: Model format (pytorch, onnx).
+        phase_04_registry_opt_format_version: Model format version.
+        phase_04_registry_opt_port: Model registry server port.
     """
     # =========================================================================
     # Stage 1: Dataset Download

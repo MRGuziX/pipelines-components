@@ -1,3 +1,4 @@
+---
 name: evalhub_kserve
 stability: experimental
 dependencies:

@@ -39,6 +39,8 @@ class TestEvalhubKserveUnitTests:
             "memory",
             "cpu",
             "runtime_image",
+            "trust_remote_code",
+            "verify_tls",
             "isvc_ready_timeout",
         ]
 
