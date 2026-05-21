@@ -83,10 +83,8 @@ def autogluon_models_training(
     import shutil
     import sys
     from concurrent.futures import ThreadPoolExecutor
-    from contextlib import contextmanager
     from pathlib import Path
     from typing import Any
-    from unittest.mock import MagicMock
 
     import numpy as np
     import pandas as pd
@@ -298,37 +296,6 @@ def autogluon_models_training(
             return confusion_matrix_res
         raise TypeError(f"Unexpected confusion_matrix type: {type(confusion_matrix_res)!r}")
 
-    _real_pandas = None
-
-    def _pandas_module():
-        """Return real pandas when unit tests mock ``sys.modules['pandas']``."""
-        nonlocal _real_pandas
-        if _real_pandas is not None:
-            return _real_pandas
-        saved = sys.modules.get("pandas")
-        if isinstance(saved, MagicMock):
-            sys.modules.pop("pandas", None)
-            try:
-                _real_pandas = importlib.import_module("pandas")
-            finally:
-                if saved is not None:
-                    sys.modules["pandas"] = saved
-        else:
-            _real_pandas = importlib.import_module("pandas")
-        return _real_pandas
-
-    @contextmanager
-    def _sklearn_context():
-        saved = sys.modules.get("pandas")
-        patched = isinstance(saved, MagicMock)
-        if patched:
-            sys.modules["pandas"] = _pandas_module()
-        try:
-            yield
-        finally:
-            if patched and saved is not None:
-                sys.modules["pandas"] = saved
-
     def _serialize_curve_array(values: Any) -> list[float]:
         return [float(v) for v in np.asarray(values).tolist()]
 
@@ -344,8 +311,9 @@ def autogluon_models_training(
         return serialized
 
     def _binarize_labels(y_true, positive_label: Any) -> np.ndarray:
-        pd_mod = _pandas_module()
-        labels = y_true if isinstance(y_true, pd_mod.Series) else pd_mod.Series(y_true)
+        import pandas as pd
+
+        labels = y_true if isinstance(y_true, pd.Series) else pd.Series(y_true)
         return (labels == positive_label).astype(int).to_numpy()
 
     def _resolve_positive_column(classes: list[Any], positive_class: Any | None) -> Any:
@@ -369,9 +337,8 @@ def autogluon_models_training(
 
         from sklearn.metrics import roc_auc_score, roc_curve
 
-        with _sklearn_context():
-            fpr, tpr, thresholds = roc_curve(y_true_binary, y_score)
-            auc = float(roc_auc_score(y_true_binary, y_score))
+        fpr, tpr, thresholds = roc_curve(y_true_binary, y_score)
+        auc = float(roc_auc_score(y_true_binary, y_score))
 
         if math.isnan(auc):
             raise ValueError(
@@ -391,9 +358,8 @@ def autogluon_models_training(
 
         from sklearn.metrics import average_precision_score, precision_recall_curve
 
-        with _sklearn_context():
-            precision, recall, thresholds = precision_recall_curve(y_true_binary, y_score)
-            average_precision = float(average_precision_score(y_true_binary, y_score))
+        precision, recall, thresholds = precision_recall_curve(y_true_binary, y_score)
+        average_precision = float(average_precision_score(y_true_binary, y_score))
 
         if math.isnan(average_precision):
             raise ValueError(
@@ -513,12 +479,13 @@ def autogluon_models_training(
         positive_class: Any | None = None,
     ) -> dict[str, Any]:
         """Build curves.json for binary or multiclass classification."""
+        import pandas as pd
+
         if curves_task_type not in {"binary", "multiclass"}:
             raise ValueError(f"task_type must be 'binary' or 'multiclass'; got {curves_task_type!r}.")
 
-        pd_mod = _pandas_module()
-        y_true_series = pd_mod.Series(y_true)
-        proba_df = y_proba if hasattr(y_proba, "columns") else pd_mod.DataFrame(y_proba)
+        y_true_series = pd.Series(y_true)
+        proba_df = y_proba if hasattr(y_proba, "columns") else pd.DataFrame(y_proba)
 
         if curves_task_type == "binary":
             return _build_binary_curves_json(y_true_series, proba_df, positive_class)

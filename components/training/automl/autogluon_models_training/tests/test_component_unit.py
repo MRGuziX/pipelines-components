@@ -11,9 +11,12 @@ import pytest
 
 @pytest.fixture(autouse=True, scope="module")
 def isolated_sys_modules():
-    """Patch pandas/autogluon in sys.modules for this module; restored on teardown."""
+    """Patch autogluon in sys.modules for this module; restored on teardown.
+
+    Note: pandas is NOT mocked - the component needs real pandas for sklearn operations
+    and DataFrame/Series manipulation in curve generation.
+    """
     with mock.patch.dict(sys.modules, clear=False) as mocked_modules:
-        mocked_modules["pandas"] = mock.MagicMock()
         _ag = mock.MagicMock()
         _ag.__path__ = []
         _ag.__spec__ = None
