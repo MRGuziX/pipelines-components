@@ -8,11 +8,7 @@ explicit API URL or token required.
 """
 
 from kfp import dsl
-
-_BASE_IMAGE = (
-    "registry.redhat.io/rhoai/odh-pipeline-runtime-datascience-cpu-py312-rhel9"
-    "@sha256:f9844dc150592a9f196283b3645dda92bd80dfdb3d467fa8725b10267ea5bdbc"
-)
+from kfp_components.utils.consts import RAY_RAG_BASE_IMAGE  # pyright: ignore[reportMissingImports]
 
 _VLLM_IMAGE = (
     "registry.redhat.io/rhaiis/vllm-cuda-rhel9@sha256:094db84a1da5e8a575d0c9eade114fa30f4a2061064a338e3e032f3578f8082a"
@@ -20,7 +16,7 @@ _VLLM_IMAGE = (
 
 
 @dsl.component(
-    base_image=_BASE_IMAGE,
+    base_image=RAY_RAG_BASE_IMAGE,
     packages_to_install=["kubernetes>=28.1.0"],
 )
 def model_deployment(

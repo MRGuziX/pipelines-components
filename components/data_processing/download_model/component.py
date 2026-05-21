@@ -6,10 +6,11 @@ model is already cached and skips the download. This avoids re-downloading
 """
 
 from kfp import dsl
+from kfp_components.utils.consts import RAY_RAG_BASE_IMAGE  # pyright: ignore[reportMissingImports]
 
 
 @dsl.component(
-    base_image="registry.redhat.io/rhoai/odh-pipeline-runtime-datascience-cpu-py312-rhel9@sha256:f9844dc150592a9f196283b3645dda92bd80dfdb3d467fa8725b10267ea5bdbc",
+    base_image=RAY_RAG_BASE_IMAGE,
     packages_to_install=["huggingface_hub>=0.20.0"],
 )
 def download_model(
