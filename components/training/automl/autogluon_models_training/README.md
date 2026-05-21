@@ -30,6 +30,7 @@ output artifact so the pipeline does not require a ParallelFor loop. Each model 
 | `sampling_config` | `Optional[dict]` | `None` | Data sampling config stored in artifact metadata. |
 | `split_config` | `Optional[dict]` | `None` | Data split config stored in artifact metadata. |
 | `extra_train_data_path` | `str` | `""` | Optional path to extra training CSV passed to ``refit_full``. |
+| `positive_class` | `Optional[str]` | `None` | **Binary only.** Positive class label (``int``/``str``). Passed to ``TabularPredictor`` when set; if omitted, AutoGluon infers it as the **second sorted unique class**. Ignored for multiclass/regression. |
 
 ## Outputs 📤
 
@@ -47,7 +48,7 @@ output artifact so the pipeline does not require a ParallelFor loop. Each model 
 - **Tags**:
   - training
   - automl
-- **Last Verified**: 2026-04-21 12:00:00+00:00
+- **Last Verified**: 2026-05-20 12:00:00+00:00
 - **Owners**:
   - Approvers:
     - LukaszCmielowski
@@ -129,7 +130,8 @@ models_artifact/
     ├── metrics/
     │   ├── metrics.json           # Evaluation results on test data (metric names → values)
     │   ├── feature_importance.json
-    │   └── confusion_matrix.json  # Classification tasks only
+    │   ├── confusion_matrix.json  # Classification tasks only
+    │   └── curves.json            # Classification tasks only (ROC + precision-recall)
     └── notebooks/
         └── automl_predictor_notebook.ipynb  # Pre-filled inference notebook
 ```
