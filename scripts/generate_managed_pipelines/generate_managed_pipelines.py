@@ -223,10 +223,7 @@ def _module_name_for_compilation(pipeline_py: Path, repo_root: Path) -> str:
 
 def should_recompile_managed_pipelines() -> bool:
     """Return True when DSPO/runtime env provides RELATED_IMAGE overrides for managed runtimes."""
-    return bool(
-        os.getenv(RELATED_IMAGE_AUTOML_ENV, "").strip()
-        or os.getenv(RELATED_IMAGE_AUTORAG_ENV, "").strip()
-    )
+    return bool(os.getenv(RELATED_IMAGE_AUTOML_ENV, "").strip() or os.getenv(RELATED_IMAGE_AUTORAG_ENV, "").strip())
 
 
 def stage_managed_pipelines(repo_root: Path, output_dir: Path) -> int:
