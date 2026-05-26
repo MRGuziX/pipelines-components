@@ -268,7 +268,7 @@ def sft_pipeline_evalhub(
     eval_task.set_caching_options(False)
     kfp.kubernetes.set_image_pull_policy(eval_task, "IfNotPresent")
 
-    for _task in [dataset_download_task, training_task]:
+    for _task in [dataset_download_task, training_task, eval_task]:
         kfp.kubernetes.use_secret_as_env(
             task=_task,
             secret_name="hf-token",
