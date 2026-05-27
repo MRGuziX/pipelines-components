@@ -25,7 +25,6 @@ Refit outputs for all selected models are written under one ``models_artifact`` 
 | `pipeline_name` | `str` | `None` | Pipeline name used in generated notebook placeholders. |
 | `run_id` | `str` | `None` | Pipeline run id used in generated notebook placeholders. |
 | `models_artifact` | `dsl.Output[dsl.Model]` | `None` | Combined output artifact containing all refitted models. |
-| `notebooks` | `dsl.EmbeddedInput[dsl.Dataset]` | `None` | Embedded notebook templates. |
 | `sample_rows` | `str` | `[]` | Optional sample rows JSON string used in generated notebook placeholders. |
 | `sampling_config` | `Optional[dict]` | `None` | Optional sampling config stored in artifact metadata. |
 | `split_config` | `Optional[dict]` | `None` | Optional split config stored in artifact metadata. |

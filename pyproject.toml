@@ -62,7 +62,6 @@ Issues = "https://github.com/kubeflow/pipelines-components/issues"
 [tool.setuptools]
 packages = [
     "kfp_components",
-    "kfp_components.utils",
     "kfp_components.components",
     "kfp_components.components.data_processing",
     "kfp_components.components.data_processing.automl",
@@ -77,8 +76,8 @@ packages = [
     "kfp_components.components.data_processing.download_model",
     "kfp_components.components.data_processing.ingest_to_milvus",
     "kfp_components.components.data_processing.parse_and_chunk",
-    "kfp_components.components.data_processing.yoda_data_processor",
     "kfp_components.components.data_processing.sdg",
+    "kfp_components.components.data_processing.yoda_data_processor",
     "kfp_components.components.deployment",
     "kfp_components.components.deployment.autorag",
     "kfp_components.components.deployment.autorag.build_responses_request_bodies",
@@ -92,6 +91,7 @@ packages = [
     "kfp_components.components.training.automl.autogluon_leaderboard_evaluation",
     "kfp_components.components.training.automl.autogluon_models_training",
     "kfp_components.components.training.automl.autogluon_timeseries_models_training",
+    "kfp_components.components.training.automl.run_status_artifact_initialization",
     "kfp_components.components.training.automl.shared",
     "kfp_components.components.training.autorag",
     "kfp_components.components.training.autorag.leaderboard_evaluation",
@@ -134,9 +134,13 @@ packages = [
 
 [tool.setuptools.package-data]
 "*" = ["*.yaml", "*.yml", "*.json"]
-"kfp_components.components.training.automl.autogluon_models_training" = ["notebook_templates/*.ipynb"]
 "kfp_components.components.training.automl.autogluon_timeseries_models_training" = ["notebook_templates/*.ipynb"]
-"kfp_components.components.training.automl.shared" = ["*.html"]
+"kfp_components.components.training.automl.shared" = [
+    "*.html",
+    "leaderboard_html_template.html",
+    "run_status_templates/**/*.json",
+    "notebook_templates/*.ipynb",
+]
 "kfp_components.components.training.autorag.rag_templates_optimization" = ["notebook_templates/*.ipynb"]
 
 [tool.ruff]

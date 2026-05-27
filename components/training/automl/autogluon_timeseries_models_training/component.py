@@ -1,15 +1,11 @@
-import pathlib
 from typing import List, NamedTuple, Optional
 
 from kfp import dsl
 from kfp_components.utils.consts import AUTOML_IMAGE  # pyright: ignore[reportMissingImports]
 
-_NOTEBOOKS_DIR = str(pathlib.Path(__file__).parent / "notebook_templates")
-
 
 @dsl.component(
     base_image=AUTOML_IMAGE,  # noqa: E501
-    embedded_artifact_path=_NOTEBOOKS_DIR,
 )
 def autogluon_timeseries_models_training(
     target: str,
@@ -22,7 +18,7 @@ def autogluon_timeseries_models_training(
     pipeline_name: str,
     run_id: str,
     models_artifact: dsl.Output[dsl.Model] = None,
-    notebooks: dsl.EmbeddedInput[dsl.Dataset] = None,
+    run_status_artifact: dsl.Output[dsl.Artifact] = None,
     sample_rows: str = "[]",
     sampling_config: Optional[dict] = None,
     split_config: Optional[dict] = None,
@@ -55,7 +51,7 @@ def autogluon_timeseries_models_training(
         top_n: Number of top models to select for full refit.
         workspace_path: Workspace directory where predictor will be saved.
         models_artifact: Combined output artifact containing all refitted models.
-        notebooks: Embedded notebook templates.
+        run_status_artifact: KFP artifact with a snapshot of ``.automl/run_status.json``.
         pipeline_name: Pipeline name used in generated notebook placeholders.
         run_id: Pipeline run id used in generated notebook placeholders.
         sample_rows: Optional sample rows JSON string used in generated notebook placeholders.
@@ -71,13 +67,22 @@ def autogluon_timeseries_models_training(
     import json
     import logging
     import math
-    import os
     from pathlib import Path
 
     import pandas as pd
     from autogluon.timeseries import TimeSeriesDataFrame, TimeSeriesPredictor
 
     logger = logging.getLogger(__name__)
+
+    from kfp_components.components.training.automl.shared.run_status import (
+        COMPONENT_TIMESERIES_MODELS_TRAINING,
+        RUN_STATUS_ARTIFACT_DISPLAY_NAME,
+        RunStatusRecorder,
+        shared_automl_dir,
+    )
+
+    run_status = RunStatusRecorder(workspace_path, COMPONENT_TIMESERIES_MODELS_TRAINING)
+    run_status.begin()
 
     # Set constants
     DEFAULT_PRESETS = "fast_training"
@@ -119,8 +124,8 @@ def autogluon_timeseries_models_training(
         raise TypeError("sample_rows must be a string.")
     if models_artifact is not None and not hasattr(models_artifact, "path"):
         raise TypeError("models_artifact must be a KFP output artifact or None.")
-    if notebooks is not None and not hasattr(notebooks, "path"):
-        raise TypeError("notebooks must be a KFP embedded artifact or None.")
+    if run_status_artifact is not None and not hasattr(run_status_artifact, "path"):
+        raise TypeError("run_status_artifact must be a KFP output artifact or None.")
     if sampling_config is not None and not isinstance(sampling_config, dict):
         raise TypeError("sampling_config must be a dictionary or None.")
     if split_config is not None and not isinstance(split_config, dict):
@@ -140,6 +145,7 @@ def autogluon_timeseries_models_training(
         timestamp_column=timestamp_column,
     )
     logger.info("Train TimeSeriesDataFrame: %s rows, %s items", len(train_ts), train_ts.num_items)
+    run_status.record("load_data", "completed")
 
     # Convert test data to TimeSeriesDataFrame
     test_ts = TimeSeriesDataFrame.from_data_frame(
@@ -168,6 +174,7 @@ def autogluon_timeseries_models_training(
         DEFAULT_TIME_LIMIT,
         prediction_length,
     )
+    run_status.record("model_selection", "started")
     try:
         predictor.fit(
             train_data=train_ts,
@@ -192,6 +199,12 @@ def autogluon_timeseries_models_training(
         )
 
     top_models = leaderboard.head(top_n)["model"].values.tolist()
+    run_status.record(
+        "model_selection",
+        "completed",
+        top_n=top_n,
+        selected_models=top_models,
+    )
     logger.info(
         "Timeseries selection done: top_%s=%s best_score_test=%s",
         top_n,
@@ -213,11 +226,15 @@ def autogluon_timeseries_models_training(
     }
 
     # Stage 2: Full refit of selected models on full train data (selection + extra).
-    if models_artifact is None or notebooks is None or not extra_train_data_path.strip():
+    if models_artifact is None or not extra_train_data_path.strip():
         logger.info(
-            "Skipping combined full-refit stage; missing models_artifact/notebooks or extra_train_data_path. "
+            "Skipping combined full-refit stage; missing models_artifact or extra_train_data_path. "
             "Returning selection-only outputs for backward compatibility."
         )
+        run_status.complete()
+        if run_status_artifact is not None:
+            run_status.publish_artifact(run_status_artifact.path)
+            run_status_artifact.metadata["display_name"] = RUN_STATUS_ARTIFACT_DISPLAY_NAME
         outputs = NamedTuple(
             "outputs",
             top_models=List[str],
@@ -259,6 +276,8 @@ def autogluon_timeseries_models_training(
     pipeline_name_trimmed = retrieve_pipeline_name(pipeline_name)
     model_names_full = []
     models_metadata = []
+
+    run_status.record("refit_full", "started")
 
     def replace_placeholder_in_notebook(notebook, replacements):
         for cell in notebook.get("cells", []):
@@ -313,7 +332,7 @@ def autogluon_timeseries_models_training(
             json.dump(metrics_dict, f, indent=2)
 
         notebook_file = "timeseries_notebook.ipynb"
-        with open(os.path.join(notebooks.path, notebook_file), "r", encoding="utf-8") as f:
+        with (shared_automl_dir() / "notebook_templates" / notebook_file).open("r", encoding="utf-8") as f:
             notebook = json.load(f)
         replacements = {
             "<REPLACE_RUN_ID>": run_id,
@@ -346,6 +365,13 @@ def autogluon_timeseries_models_training(
         models_metadata.append(model_metadata)
         with (output_path / "model.json").open("w", encoding="utf-8") as f:
             json.dump(model_metadata, f, indent=2)
+
+    run_status.record("refit_full", "completed", model_count=len(model_names_full))
+    run_status.record("evaluate_models", "completed", eval_metric=eval_metric)
+    run_status.complete()
+    if run_status_artifact is not None:
+        run_status.publish_artifact(run_status_artifact.path)
+        run_status_artifact.metadata["display_name"] = RUN_STATUS_ARTIFACT_DISPLAY_NAME
 
     models_artifact.metadata["model_names"] = json.dumps(model_names_full)
     models_artifact.metadata["context"] = {

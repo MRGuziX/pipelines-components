@@ -4,9 +4,15 @@ from kfp import dsl
 from kfp_components.components.data_processing.automl.tabular_data_loader import automl_data_loader
 from kfp_components.components.training.automl.autogluon_leaderboard_evaluation import leaderboard_evaluation
 from kfp_components.components.training.automl.autogluon_models_training import autogluon_models_training
+from kfp_components.components.training.automl.run_status_artifact_initialization import (
+    run_status_artifact_initialization,
+)
 
 MAX_CPUS = "32"
 MAX_MEMORY = "64Gi"
+
+# Must match @dsl.pipeline name=... and run_status_templates/pipelines/<name>.json
+RUN_STATUS_PIPELINE_ID = "autogluon-tabular-training-pipeline"
 
 
 @dsl.pipeline(
@@ -55,6 +61,9 @@ def autogluon_tabular_training_pipeline(
     component). The workspace is provisioned via ``PipelineConfig.workspace``.
 
     **Pipeline Stages:**
+
+    0. **Run status initialization**: Seeds ``.automl/run_status.json`` on the workspace and
+       publishes an initial ``run_status`` artifact for dashboards before any data I/O.
 
     1. **Data Loading & Splitting**: Loads tabular (CSV) data from an S3-compatible
        object storage bucket using AWS credentials configured via Kubernetes secrets.
@@ -142,6 +151,17 @@ def autogluon_tabular_training_pipeline(
     """  # noqa: E501
     from kfp.kubernetes import use_secret_as_env
 
+    run_status_init_task = run_status_artifact_initialization(
+        workspace_path=dsl.WORKSPACE_PATH_PLACEHOLDER,
+        pipeline_name=dsl.PIPELINE_JOB_RESOURCE_NAME_PLACEHOLDER,
+        run_id=dsl.PIPELINE_JOB_ID_PLACEHOLDER,
+        run_status_pipeline_id=RUN_STATUS_PIPELINE_ID,
+    )
+    run_status_init_task.set_caching_options(False)
+    run_status_init_task.set_cpu_request("0.5").set_memory_request("512Mi").set_cpu_limit("1").set_memory_limit(
+        "1Gi"
+    )
+
     data_loader_task = automl_data_loader(
         bucket_name=train_data_bucket_name,
         file_key=train_data_file_key,
@@ -149,6 +169,7 @@ def autogluon_tabular_training_pipeline(
         label_column=label_column,
         task_type=task_type,
     )
+    data_loader_task.after(run_status_init_task)
     data_loader_task.set_caching_options(False)
     data_loader_task.set_cpu_request("2").set_memory_request("8Gi").set_cpu_limit(MAX_CPUS).set_memory_limit(MAX_MEMORY)
 
@@ -187,6 +208,7 @@ def autogluon_tabular_training_pipeline(
     leaderboard_evaluation_task = leaderboard_evaluation(
         models_artifact=training_task.outputs["models_artifact"],
         eval_metric=training_task.outputs["eval_metric"],
+        workspace_path=dsl.WORKSPACE_PATH_PLACEHOLDER,
     )
     leaderboard_evaluation_task.set_caching_options(False)
     leaderboard_evaluation_task.set_cpu_request("1").set_memory_request("4Gi").set_cpu_limit(MAX_CPUS).set_memory_limit(

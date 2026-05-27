@@ -1,15 +1,11 @@
-import pathlib
 from typing import NamedTuple, Optional
 
 from kfp import dsl
 from kfp_components.utils.consts import AUTOML_IMAGE  # pyright: ignore[reportMissingImports]
 
-_NOTEBOOKS_DIR = str(pathlib.Path(__file__).parent / "notebook_templates")
-
 
 @dsl.component(
     base_image=AUTOML_IMAGE,  # noqa: E501
-    embedded_artifact_path=_NOTEBOOKS_DIR,
 )
 def autogluon_models_training(
     label_column: str,
@@ -22,7 +18,7 @@ def autogluon_models_training(
     run_id: str,
     sample_row: str,
     models_artifact: dsl.Output[dsl.Model],
-    notebooks: dsl.EmbeddedInput[dsl.Dataset],
+    run_status_artifact: dsl.Output[dsl.Artifact],
     sampling_config: Optional[dict] = None,
     split_config: Optional[dict] = None,
     extra_train_data_path: str = "",
@@ -57,7 +53,7 @@ def autogluon_models_training(
         run_id: Pipeline run ID written into the generated notebook.
         sample_row: JSON array of row dicts for the notebook example input; label column is stripped.
         models_artifact: Output Model artifact containing all refitted model subdirectories.
-        notebooks: Embedded notebook templates injected by the KFP runtime.
+        run_status_artifact: KFP artifact with a snapshot of ``.automl/run_status.json``.
         sampling_config: Data sampling config stored in artifact metadata.
         split_config: Data split config stored in artifact metadata.
         extra_train_data_path: Optional path to extra training CSV passed to ``refit_full``.
@@ -139,6 +135,17 @@ def autogluon_models_training(
 
     logger = logging.getLogger(__name__)
 
+    from kfp_components.components.training.automl.shared.run_status import (
+        COMPONENT_MODELS_TRAINING,
+        RUN_STATUS_ARTIFACT_DISPLAY_NAME,
+        RunStatusRecorder,
+        shared_automl_dir,
+    )
+
+    run_status = RunStatusRecorder(workspace_path, COMPONENT_MODELS_TRAINING)
+    run_status.begin()
+    run_status.record("load_data", "completed")
+
     DEFAULT_PRESET = "medium_quality"
     DEFAULT_TIME_LIMIT = 30 * 60  # 30 minutes
 
@@ -200,6 +207,7 @@ def autogluon_models_training(
             "classes ['abc', 'def'] -> positive_class='def')."
         )
 
+    run_status.record("model_selection", "started")
     predictor = TabularPredictor(**predictor_init_kwargs).fit(
         train_data=train_data_df,
         num_stack_levels=1,
@@ -214,6 +222,12 @@ def autogluon_models_training(
     leaderboard = predictor.leaderboard(test_data_df)
     logger.info("Leaderboard:\n\n %s", leaderboard.head(top_n).to_string())
     top_models = leaderboard.head(top_n)["model"].values.tolist()
+    run_status.record(
+        "model_selection",
+        "completed",
+        top_n=top_n,
+        selected_models=top_models,
+    )
 
     model_config = {
         "preset": DEFAULT_PRESET,
@@ -257,7 +271,9 @@ def autogluon_models_training(
     predictor_clone = predictor.clone(path=work_path, return_clone=True, dirs_exist_ok=True)
 
     # Refit all top models in a single call:  AutoGluon resolves stacking dependencies internally.
+    run_status.record("refit_full", "started")
     predictor_clone.refit_full(model=top_models, train_data_extra=extra_train_df)
+    run_status.record("refit_full", "completed", model_count=len(model_names_full))
 
     def replace_placeholder_in_notebook(notebook, replacements):
         for cell in notebook.get("cells", []):
@@ -549,7 +565,7 @@ def autogluon_models_training(
                     str(e),
                 )
 
-        with (Path(notebooks.path) / notebook_file).open("r", encoding="utf-8") as f:
+        with (shared_automl_dir() / "notebook_templates" / notebook_file).open("r", encoding="utf-8") as f:
             notebook = json.load(f)
         replacements = {
             "<REPLACE_RUN_ID>": run_id,
@@ -610,6 +626,11 @@ def autogluon_models_training(
         "model_config": model_config,
         "models": models_metadata,
     }
+
+    run_status.record("evaluate_models", "completed", eval_metric=str(predictor.eval_metric))
+    run_status.complete()
+    run_status.publish_artifact(run_status_artifact.path)
+    run_status_artifact.metadata["display_name"] = RUN_STATUS_ARTIFACT_DISPLAY_NAME
 
     return NamedTuple("outputs", eval_metric=str)(eval_metric=str(predictor.eval_metric))
 

@@ -6,9 +6,15 @@ from kfp_components.components.training.automl.autogluon_leaderboard_evaluation 
 from kfp_components.components.training.automl.autogluon_timeseries_models_training import (
     autogluon_timeseries_models_training,
 )
+from kfp_components.components.training.automl.run_status_artifact_initialization import (
+    run_status_artifact_initialization,
+)
 
 MAX_CPUS = "32"
 MAX_MEMORY = "64Gi"
+
+# Must match @dsl.pipeline name=... and run_status_templates/pipelines/<name>.json
+RUN_STATUS_PIPELINE_ID = "autogluon-timeseries-training-pipeline"
 
 
 @dsl.pipeline(
@@ -56,6 +62,9 @@ def autogluon_timeseries_training_pipeline(
     ``train_data_secret_name``.
 
     Pipeline stages:
+
+    0. **Run status initialization**: Seeds ``.automl/run_status.json`` and publishes an initial
+       ``run_status`` artifact for dashboards before data loading.
 
     1. **Data loading & splitting** (``timeseries_data_loader``): Loads CSV from S3 (up to 100 MB),
        replaces ``+/-inf`` with NaN (missing targets stay for AutoGluon), requires parseable timestamps
@@ -116,6 +125,18 @@ def autogluon_timeseries_training_pipeline(
             top_n=3,
         )
     """
+    # Stage 0: Run status for dashboards
+    run_status_init_task = run_status_artifact_initialization(
+        workspace_path=dsl.WORKSPACE_PATH_PLACEHOLDER,
+        pipeline_name=dsl.PIPELINE_JOB_RESOURCE_NAME_PLACEHOLDER,
+        run_id=dsl.PIPELINE_JOB_ID_PLACEHOLDER,
+        run_status_pipeline_id=RUN_STATUS_PIPELINE_ID,
+    )
+    run_status_init_task.set_caching_options(False)
+    run_status_init_task.set_cpu_request("0.5").set_memory_request("512Mi").set_cpu_limit("1").set_memory_limit(
+        "1Gi"
+    )
+
     # Stage 1: Data Loading & Splitting
     data_loader_task = timeseries_data_loader(
         bucket_name=train_data_bucket_name,
@@ -125,6 +146,7 @@ def autogluon_timeseries_training_pipeline(
         id_column=id_column,
         timestamp_column=timestamp_column,
     )
+    data_loader_task.after(run_status_init_task)
     data_loader_task.set_caching_options(False)
     data_loader_task.set_cpu_request("2").set_memory_request("8Gi").set_cpu_limit(MAX_CPUS).set_memory_limit(MAX_MEMORY)
 
@@ -168,6 +190,7 @@ def autogluon_timeseries_training_pipeline(
     leaderboard_task = leaderboard_evaluation(
         models_artifact=training_task.outputs["models_artifact"],
         eval_metric=training_task.outputs["eval_metric"],
+        workspace_path=dsl.WORKSPACE_PATH_PLACEHOLDER,
     )
     leaderboard_task.set_caching_options(False)
     leaderboard_task.set_cpu_request("1").set_memory_request("4Gi").set_cpu_limit(MAX_CPUS).set_memory_limit(MAX_MEMORY)

@@ -11,6 +11,8 @@ def leaderboard_evaluation(
     models_artifact: dsl.Input[dsl.Model],
     eval_metric: str,
     html_artifact: dsl.Output[dsl.HTML],
+    run_status_artifact: dsl.Output[dsl.Artifact],
+    workspace_path: str,
 ) -> NamedTuple("outputs", best_model=str):
     """Evaluate refitted AutoGluon models and generate a leaderboard.
 
@@ -35,6 +37,8 @@ def leaderboard_evaluation(
         eval_metric: Metric name for ranking (e.g. ``"accuracy"``, ``"root_mean_squared_error"``);
             leaderboard sorted descending (AutoGluon uses higher-is-better convention).
         html_artifact: Output artifact for the HTML-formatted leaderboard.
+        run_status_artifact: KFP artifact with the final snapshot of ``.automl/run_status.json``.
+        workspace_path: PVC workspace path for ``.automl/run_status.json`` updates.
 
     Raises:
         FileNotFoundError: If any model metrics path cannot be found.
@@ -66,8 +70,16 @@ def leaderboard_evaluation(
         _build_leaderboard_table,
         _round_metrics,
     )
+    from kfp_components.components.training.automl.shared.run_status import (
+        COMPONENT_LEADERBOARD,
+        RUN_STATUS_ARTIFACT_DISPLAY_NAME,
+        RunStatusRecorder,
+    )
 
     logger = logging.getLogger(__name__)
+    run_status = RunStatusRecorder(workspace_path, COMPONENT_LEADERBOARD)
+    run_status.begin()
+    run_status.record("build_leaderboard", "started")
 
     # Input validation
     if not isinstance(eval_metric, str) or not eval_metric.strip():
@@ -133,6 +145,15 @@ def leaderboard_evaluation(
 
     html_artifact.metadata["data"] = leaderboard_df.to_dict()
     html_artifact.metadata["display_name"] = "automl_leaderboard"
+    run_status.record(
+        "build_leaderboard",
+        "completed",
+        best_model=best_model_name,
+        model_count=len(leaderboard_df),
+    )
+    run_status.complete()
+    run_status.publish_artifact(run_status_artifact.path)
+    run_status_artifact.metadata["display_name"] = RUN_STATUS_ARTIFACT_DISPLAY_NAME
     return NamedTuple("outputs", best_model=str)(best_model=best_model_name)
 
 
