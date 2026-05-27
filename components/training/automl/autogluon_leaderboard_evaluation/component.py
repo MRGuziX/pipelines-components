@@ -1,11 +1,15 @@
+import pathlib
 from typing import NamedTuple
 
 from kfp import dsl
 from kfp_components.utils.consts import AUTOML_IMAGE  # pyright: ignore[reportMissingImports]
 
+_SHARED_DIR = str(pathlib.Path(__file__).resolve().parent.parent / "shared")
+
 
 @dsl.component(
     base_image=AUTOML_IMAGE,  # noqa: E501
+    embedded_artifact_path=_SHARED_DIR,
 )
 def leaderboard_evaluation(
     models_artifact: dsl.Input[dsl.Model],
@@ -59,25 +63,21 @@ def leaderboard_evaluation(
             )
             return leaderboard
     """  # noqa: E501
-    import importlib.resources
     import json
     import logging
     from pathlib import Path
 
     import pandas as pd
-    from kfp_components.components.training.automl.shared.leaderboard_utils import (
-        _build_leaderboard_html,
-        _build_leaderboard_table,
-        _round_metrics,
-    )
-    from kfp_components.components.training.automl.shared.run_status import (
-        COMPONENT_LEADERBOARD,
-        RUN_STATUS_ARTIFACT_DISPLAY_NAME,
-        RunStatusRecorder,
-    )
+    from automl_runtime import load_leaderboard_utils, load_run_status
+
+    lu = load_leaderboard_utils()
+    rs = load_run_status()
+    _build_leaderboard_html = lu._build_leaderboard_html
+    _build_leaderboard_table = lu._build_leaderboard_table
+    _round_metrics = lu._round_metrics
 
     logger = logging.getLogger(__name__)
-    run_status = RunStatusRecorder(workspace_path, COMPONENT_LEADERBOARD)
+    run_status = rs.RunStatusRecorder(workspace_path, rs.COMPONENT_LEADERBOARD)
     run_status.begin()
     run_status.record("build_leaderboard", "started")
 
@@ -129,17 +129,14 @@ def leaderboard_evaluation(
     html_table = _build_leaderboard_table(leaderboard_df)
 
     best_model_name = leaderboard_df.iloc[0]["model"]
-    _template_ref = (
-        importlib.resources.files("kfp_components.components.training.automl.shared") / "leaderboard_html_template.html"
+    template_path = Path(lu.__file__).resolve().parent / "leaderboard_html_template.html"
+    html_content = _build_leaderboard_html(
+        template_path=template_path,
+        table_html=html_table,
+        eval_metric=eval_metric,
+        best_model_name=best_model_name,
+        num_models=len(leaderboard_df),
     )
-    with importlib.resources.as_file(_template_ref) as template_path:
-        html_content = _build_leaderboard_html(
-            template_path=template_path,
-            table_html=html_table,
-            eval_metric=eval_metric,
-            best_model_name=best_model_name,
-            num_models=len(leaderboard_df),
-        )
     with open(html_artifact.path, "w", encoding="utf-8") as f:
         f.write(html_content)
 
@@ -153,7 +150,7 @@ def leaderboard_evaluation(
     )
     run_status.complete()
     run_status.publish_artifact(run_status_artifact.path)
-    run_status_artifact.metadata["display_name"] = RUN_STATUS_ARTIFACT_DISPLAY_NAME
+    run_status_artifact.metadata["display_name"] = rs.RUN_STATUS_ARTIFACT_DISPLAY_NAME
     return NamedTuple("outputs", best_model=str)(best_model=best_model_name)
 
 

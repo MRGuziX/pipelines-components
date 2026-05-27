@@ -1,0 +1,8 @@
+"""Test fixtures: mirror KFP embedded shared dir on sys.path."""
+
+import sys
+from pathlib import Path
+
+_shared_dir = str(Path(__file__).resolve().parents[2] / "shared")
+if _shared_dir not in sys.path:
+    sys.path.insert(0, _shared_dir)

@@ -1,11 +1,15 @@
+import pathlib
 from typing import List, NamedTuple, Optional
 
 from kfp import dsl
 from kfp_components.utils.consts import AUTOML_IMAGE  # pyright: ignore[reportMissingImports]
 
+_SHARED_DIR = str(pathlib.Path(__file__).resolve().parent.parent / "shared")
+
 
 @dsl.component(
     base_image=AUTOML_IMAGE,  # noqa: E501
+    embedded_artifact_path=_SHARED_DIR,
 )
 def autogluon_timeseries_models_training(
     target: str,
@@ -74,14 +78,10 @@ def autogluon_timeseries_models_training(
 
     logger = logging.getLogger(__name__)
 
-    from kfp_components.components.training.automl.shared.run_status import (
-        COMPONENT_TIMESERIES_MODELS_TRAINING,
-        RUN_STATUS_ARTIFACT_DISPLAY_NAME,
-        RunStatusRecorder,
-        shared_automl_dir,
-    )
+    from automl_runtime import load_run_status
 
-    run_status = RunStatusRecorder(workspace_path, COMPONENT_TIMESERIES_MODELS_TRAINING)
+    rs = load_run_status()
+    run_status = rs.RunStatusRecorder(workspace_path, rs.COMPONENT_TIMESERIES_MODELS_TRAINING)
     run_status.begin()
 
     # Set constants
@@ -234,7 +234,7 @@ def autogluon_timeseries_models_training(
         run_status.complete()
         if run_status_artifact is not None:
             run_status.publish_artifact(run_status_artifact.path)
-            run_status_artifact.metadata["display_name"] = RUN_STATUS_ARTIFACT_DISPLAY_NAME
+            run_status_artifact.metadata["display_name"] = rs.RUN_STATUS_ARTIFACT_DISPLAY_NAME
         outputs = NamedTuple(
             "outputs",
             top_models=List[str],
@@ -332,7 +332,8 @@ def autogluon_timeseries_models_training(
             json.dump(metrics_dict, f, indent=2)
 
         notebook_file = "timeseries_notebook.ipynb"
-        with (shared_automl_dir() / "notebook_templates" / notebook_file).open("r", encoding="utf-8") as f:
+        shared_root = Path(rs.__file__).resolve().parent
+        with (shared_root / "notebook_templates" / notebook_file).open("r", encoding="utf-8") as f:
             notebook = json.load(f)
         replacements = {
             "<REPLACE_RUN_ID>": run_id,
@@ -371,7 +372,7 @@ def autogluon_timeseries_models_training(
     run_status.complete()
     if run_status_artifact is not None:
         run_status.publish_artifact(run_status_artifact.path)
-        run_status_artifact.metadata["display_name"] = RUN_STATUS_ARTIFACT_DISPLAY_NAME
+        run_status_artifact.metadata["display_name"] = rs.RUN_STATUS_ARTIFACT_DISPLAY_NAME
 
     models_artifact.metadata["model_names"] = json.dumps(model_names_full)
     models_artifact.metadata["context"] = {

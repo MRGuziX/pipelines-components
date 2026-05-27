@@ -1,8 +1,14 @@
 """Test fixtures for tabular_data_loader."""
 
+import sys
+from pathlib import Path
 from unittest import mock
 
 import pytest
+
+_shared_dir = str(Path(__file__).resolve().parents[4] / "training" / "automl" / "shared")
+if _shared_dir not in sys.path:
+    sys.path.insert(0, _shared_dir)
 
 def _make_run_status_artifact(tmp_path):
     art = mock.MagicMock()

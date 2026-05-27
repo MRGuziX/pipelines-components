@@ -1,9 +1,14 @@
+import pathlib
+
 from kfp import dsl
 from kfp_components.utils.consts import AUTOML_IMAGE  # pyright: ignore[reportMissingImports]
+
+_SHARED_DIR = str(pathlib.Path(__file__).resolve().parent.parent / "shared")
 
 
 @dsl.component(
     base_image=AUTOML_IMAGE,  # noqa: E501
+    embedded_artifact_path=_SHARED_DIR,
 )
 def run_status_artifact_initialization(
     workspace_path: str,
@@ -27,11 +32,9 @@ def run_status_artifact_initialization(
             ``autogluon-tabular-training-pipeline``).
         run_status_artifact: Output artifact containing the initial ``run_status.json`` snapshot.
     """
-    from kfp_components.components.training.automl.shared.run_status import (
-        RUN_STATUS_ARTIFACT_DISPLAY_NAME,
-        init_run_status,
-        publish_run_status_artifact,
-    )
+    from automl_runtime import load_run_status
+
+    rs = load_run_status()
 
     if not isinstance(workspace_path, str) or not workspace_path.strip():
         raise ValueError("workspace_path must be a non-empty string.")
@@ -42,15 +45,15 @@ def run_status_artifact_initialization(
     if not isinstance(run_status_pipeline_id, str) or not run_status_pipeline_id.strip():
         raise ValueError("run_status_pipeline_id must be a non-empty string.")
 
-    init_run_status(
+    rs.init_run_status(
         workspace_path,
         kfp_run_id=run_id,
         pipeline_name=pipeline_name,
         run_status_pipeline_id=run_status_pipeline_id,
     )
-    publish_run_status_artifact(
+    rs.publish_run_status_artifact(
         run_status_artifact.path,
         workspace_path,
         validate=False,
     )
-    run_status_artifact.metadata["display_name"] = RUN_STATUS_ARTIFACT_DISPLAY_NAME
+    run_status_artifact.metadata["display_name"] = rs.RUN_STATUS_ARTIFACT_DISPLAY_NAME

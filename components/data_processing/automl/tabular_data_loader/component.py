@@ -1,11 +1,15 @@
+import pathlib
 from typing import NamedTuple, Optional
 
 from kfp import dsl
 from kfp_components.utils.consts import AUTOML_IMAGE  # pyright: ignore[reportMissingImports]
 
+_SHARED_DIR = str(pathlib.Path(__file__).resolve().parents[3] / "training" / "automl" / "shared")
+
 
 @dsl.component(
     base_image=AUTOML_IMAGE,  # noqa: E501
+    embedded_artifact_path=_SHARED_DIR,
 )
 def automl_data_loader(  # noqa: D417
     file_key: str,
@@ -127,13 +131,10 @@ def automl_data_loader(  # noqa: D417
     elif selection_train_size <= 0 or selection_train_size >= 1:
         raise ValueError("selection_train_size must be in a range 0 to 1.")
 
-    from kfp_components.components.training.automl.shared.run_status import (
-        COMPONENT_DATA_LOADER,
-        RUN_STATUS_ARTIFACT_DISPLAY_NAME,
-        RunStatusRecorder,
-    )
+    from automl_runtime import load_run_status
 
-    run_status = RunStatusRecorder(workspace_path, COMPONENT_DATA_LOADER)
+    rs = load_run_status()
+    run_status = rs.RunStatusRecorder(workspace_path, rs.COMPONENT_DATA_LOADER)
     run_status.begin()
     run_status.record("validate_inputs", "completed")
 
@@ -462,7 +463,7 @@ def automl_data_loader(  # noqa: D417
     run_status.record("write_outputs", "completed")
     run_status.complete()
     run_status.publish_artifact(run_status_artifact.path)
-    run_status_artifact.metadata["display_name"] = RUN_STATUS_ARTIFACT_DISPLAY_NAME
+    run_status_artifact.metadata["display_name"] = rs.RUN_STATUS_ARTIFACT_DISPLAY_NAME
 
     # Sample row for downstream use (JSON string to avoid NaN issues)
     sample_row = X_y_test.head(1).to_json(orient="records")

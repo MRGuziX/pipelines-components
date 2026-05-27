@@ -1,11 +1,15 @@
+import pathlib
 from typing import NamedTuple
 
 from kfp import dsl
 from kfp_components.utils.consts import AUTOML_IMAGE  # pyright: ignore[reportMissingImports]
 
+_SHARED_DIR = str(pathlib.Path(__file__).resolve().parents[3] / "training" / "automl" / "shared")
+
 
 @dsl.component(
     base_image=AUTOML_IMAGE,  # noqa: E501
+    embedded_artifact_path=_SHARED_DIR,
 )
 def timeseries_data_loader(
     file_key: str,
@@ -92,13 +96,10 @@ def timeseries_data_loader(
     if file_key.startswith("/") or file_key.endswith("/") or "//" in file_key:
         raise ValueError("file_key must be a valid S3 object key and must not start/end with '/' or contain '//'.")
 
-    from kfp_components.components.training.automl.shared.run_status import (
-        COMPONENT_TIMESERIES_DATA_LOADER,
-        RUN_STATUS_ARTIFACT_DISPLAY_NAME,
-        RunStatusRecorder,
-    )
+    from automl_runtime import load_run_status
 
-    run_status = RunStatusRecorder(workspace_path, COMPONENT_TIMESERIES_DATA_LOADER)
+    rs = load_run_status()
+    run_status = rs.RunStatusRecorder(workspace_path, rs.COMPONENT_TIMESERIES_DATA_LOADER)
     run_status.begin()
     run_status.record("validate_inputs", "completed")
 
@@ -429,7 +430,7 @@ def timeseries_data_loader(
     run_status.record("write_outputs", "completed")
     run_status.complete()
     run_status.publish_artifact(run_status_artifact.path)
-    run_status_artifact.metadata["display_name"] = RUN_STATUS_ARTIFACT_DISPLAY_NAME
+    run_status_artifact.metadata["display_name"] = rs.RUN_STATUS_ARTIFACT_DISPLAY_NAME
 
     # Sample row for downstream use (JSON string to avoid NaN issues)
     sample_rows = test_df.tail(min(5, len(test_df))).to_json(orient="records")
