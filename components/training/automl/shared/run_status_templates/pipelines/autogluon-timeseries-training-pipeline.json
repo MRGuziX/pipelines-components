@@ -2,12 +2,11 @@
   "pipeline_id": "autogluon-timeseries-training-pipeline",
   "description": "Time series AutoGluon pipeline: load and split panel data, train and refit models, build leaderboard.",
   "initial_document": {
-    "components": {}
+    "components": []
   },
   "components": [
     {
       "id": "timeseries_data_loader",
-      "order": 1,
       "description": "Load time series data from S3, cleanse, and write per-series train/test splits.",
       "stages": [
         {
@@ -34,7 +33,6 @@
     },
     {
       "id": "autogluon_timeseries_models_training",
-      "order": 2,
       "description": "Train AutoGluon time series models, refit top N, and evaluate on holdout.",
       "stages": [
         {
@@ -58,7 +56,6 @@
     },
     {
       "id": "leaderboard_evaluation",
-      "order": 3,
       "description": "Build the AutoML leaderboard HTML from per-model metrics.",
       "stages": [
         {

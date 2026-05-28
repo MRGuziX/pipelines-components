@@ -2,12 +2,11 @@
   "pipeline_id": "autogluon-tabular-training-pipeline",
   "description": "Tabular AutoGluon pipeline: load and split data, train and refit models, build leaderboard.",
   "initial_document": {
-    "components": {}
+    "components": []
   },
   "components": [
     {
       "id": "automl_data_loader",
-      "order": 1,
       "description": "Load tabular data, sample, cleanse, split, and write train/validation outputs.",
       "stages": [
         {
@@ -34,7 +33,6 @@
     },
     {
       "id": "autogluon_models_training",
-      "order": 2,
       "description": "Train AutoGluon tabular models, refit, and evaluate on validation data.",
       "stages": [
         {
@@ -63,7 +61,6 @@
     },
     {
       "id": "leaderboard_evaluation",
-      "order": 3,
       "description": "Build the AutoML leaderboard HTML from per-model metrics.",
       "stages": [
         {

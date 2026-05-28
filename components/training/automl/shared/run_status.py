@@ -41,7 +41,7 @@ STATUS_COMPLETED = "completed"
 STATUS_FAILED = "failed"
 
 _DEFAULT_INITIAL_DOCUMENT: dict[str, Any] = {
-    "components": {},
+    "components": [],
 }
 
 
@@ -75,11 +75,15 @@ def load_pipeline_run_status_manifest(
         return json.load(f)
 
 
+def _manifest_component_definitions(manifest: dict[str, Any]) -> list[dict[str, Any]]:
+    """Ordered component definitions from a pipeline manifest."""
+    return [component for component in manifest.get("components", []) if component.get("id")]
+
+
 def pipeline_component_ids(pipeline_id: str, *, templates_root: str | None = None) -> list[str]:
     """Ordered component ids from the pipeline manifest."""
     manifest = load_pipeline_run_status_manifest(pipeline_id, templates_root=templates_root)
-    components = sorted(manifest.get("components", []), key=lambda c: c.get("order", 0))
-    return [c["id"] for c in components if c.get("id")]
+    return [component["id"] for component in _manifest_component_definitions(manifest)]
 
 
 def load_component_stage_catalog(
@@ -95,7 +99,7 @@ def load_component_stage_catalog(
     if not pipeline_id:
         return {"id": component_name, "stages": []}
     manifest = load_pipeline_run_status_manifest(pipeline_id, templates_root=templates_root)
-    for component in manifest.get("components", []):
+    for component in _manifest_component_definitions(manifest):
         if component.get("id") == component_name:
             return component
     logger.warning(
@@ -179,6 +183,61 @@ def save_run_status(workspace_path: str, document: dict[str, Any]) -> None:
         json.dump(document, f, indent=2)
 
 
+def _components_list(document: dict[str, Any]) -> list[dict[str, Any]]:
+    """Return ``components`` as an ordered list (supports legacy map-shaped documents)."""
+    raw = document.get("components")
+    if isinstance(raw, list):
+        return raw
+    if isinstance(raw, dict):
+        items: list[tuple[int, str, dict[str, Any]]] = []
+        for component_id, entry in raw.items():
+            if not isinstance(entry, dict):
+                continue
+            merged = dict(entry)
+            merged.setdefault("id", component_id)
+            sort_key = int(merged.pop("order")) if isinstance(merged.get("order"), int) else 10**9
+            items.append((sort_key, component_id, merged))
+        items.sort(key=lambda item: (item[0], item[1]))
+        return [entry for _, _, entry in items]
+    return []
+
+
+def _set_components_list(document: dict[str, Any], components: list[dict[str, Any]]) -> None:
+    document["components"] = components
+
+
+def _find_component_index(components: list[dict[str, Any]], component_name: str) -> int | None:
+    for index, entry in enumerate(components):
+        if entry.get("id") == component_name:
+            return index
+    return None
+
+
+def _get_component_entry(document: dict[str, Any], component_name: str) -> dict[str, Any] | None:
+    components = _components_list(document)
+    index = _find_component_index(components, component_name)
+    return components[index] if index is not None else None
+
+
+def _get_or_create_component_entry(
+    document: dict[str, Any],
+    component_name: str,
+    *,
+    default_state: str = STATUS_PENDING,
+) -> dict[str, Any]:
+    components = _components_list(document)
+    index = _find_component_index(components, component_name)
+    if index is None:
+        entry: dict[str, Any] = {"id": component_name, "state": default_state, "stages": []}
+        components.append(entry)
+    else:
+        entry = components[index]
+        entry.setdefault("id", component_name)
+        entry.setdefault("stages", [])
+    _set_components_list(document, components)
+    return entry
+
+
 def _initial_document_from_manifest(manifest: dict[str, Any]) -> dict[str, Any]:
     if "initial_document" in manifest:
         return copy.deepcopy(manifest["initial_document"])
@@ -188,8 +247,6 @@ def _initial_document_from_manifest(manifest: dict[str, Any]) -> dict[str, Any]:
 def _catalog_fields_from_definition(defn: dict[str, Any], *, include_steps: bool = False) -> dict[str, Any]:
     """Copy static catalog fields from a manifest component or stage definition."""
     fields: dict[str, Any] = {}
-    if "order" in defn:
-        fields["order"] = defn["order"]
     description = defn.get("description")
     if isinstance(description, str) and description:
         fields["description"] = description
@@ -210,20 +267,18 @@ def _pending_stage_entry(stage_def: dict[str, Any]) -> dict[str, Any]:
 
 
 def _pending_component_entry(comp_def: dict[str, Any]) -> dict[str, Any]:
+    component_id = comp_def.get("id")
+    if not component_id:
+        raise ValueError("manifest component entry requires an id")
     stages = [_pending_stage_entry(stage_def) for stage_def in comp_def.get("stages", []) if stage_def.get("id")]
-    entry: dict[str, Any] = {"state": STATUS_PENDING, "stages": stages}
+    entry: dict[str, Any] = {"id": component_id, "state": STATUS_PENDING, "stages": stages}
     entry.update(_catalog_fields_from_definition(comp_def))
     return entry
 
 
-def _build_pipeline_plan_from_manifest(manifest: dict[str, Any]) -> dict[str, Any]:
+def _build_pipeline_plan_from_manifest(manifest: dict[str, Any]) -> list[dict[str, Any]]:
     """All pipeline components and stages from the manifest, initially ``pending``."""
-    components: dict[str, Any] = {}
-    for comp_def in sorted(manifest.get("components", []), key=lambda c: c.get("order", 0)):
-        component_id = comp_def.get("id")
-        if component_id:
-            components[component_id] = _pending_component_entry(comp_def)
-    return components
+    return [_pending_component_entry(comp_def) for comp_def in _manifest_component_definitions(manifest)]
 
 
 def _merge_component_stages(entry: dict[str, Any], comp_def: dict[str, Any]) -> None:
@@ -256,15 +311,24 @@ def ensure_pipeline_plan(
     if not isinstance(pipeline_id, str) or not pipeline_id:
         return
     manifest = load_pipeline_run_status_manifest(pipeline_id, templates_root=templates_root)
-    components = document.setdefault("components", {})
-    for comp_def in sorted(manifest.get("components", []), key=lambda c: c.get("order", 0)):
-        component_id = comp_def.get("id")
-        if not component_id:
-            continue
-        if component_id not in components:
-            components[component_id] = _pending_component_entry(comp_def)
+    existing = {
+        entry["id"]: entry for entry in _components_list(document) if isinstance(entry.get("id"), str)
+    }
+    merged: list[dict[str, Any]] = []
+    seen: set[str] = set()
+    for comp_def in _manifest_component_definitions(manifest):
+        component_id = comp_def["id"]
+        seen.add(component_id)
+        if component_id in existing:
+            entry = existing[component_id]
+            _merge_component_stages(entry, comp_def)
         else:
-            _merge_component_stages(components[component_id], comp_def)
+            entry = _pending_component_entry(comp_def)
+        merged.append(entry)
+    for component_id, entry in existing.items():
+        if component_id not in seen:
+            merged.append(entry)
+    _set_components_list(document, merged)
     save_run_status(workspace_path, document)
 
 
@@ -335,7 +399,7 @@ def validate_component_stages(
     expected = set(expected_stage_ids(component_name, pipeline_id=pipeline_id, templates_root=templates_root))
     if not expected:
         return
-    entry = document.get("components", {}).get(component_name, {})
+    entry = _get_component_entry(document, component_name) or {}
     stages_by_id = {stage.get("id"): stage for stage in entry.get("stages", []) if stage.get("id")}
     missing = expected - set(stages_by_id)
     unknown = set(stages_by_id) - expected
@@ -377,8 +441,7 @@ def begin_component(
     pipeline_id = resolve_run_status_pipeline_id(workspace_path)
     _log_expected_stages(component_name, pipeline_id=pipeline_id, templates_root=templates_root)
     document = load_run_status(workspace_path)
-    components = document.setdefault("components", {})
-    entry = components.setdefault(component_name, {"state": STATUS_PENDING, "stages": []})
+    entry = _get_or_create_component_entry(document, component_name, default_state=STATUS_PENDING)
     entry["state"] = STATUS_RUNNING
     save_run_status(workspace_path, document)
 
@@ -400,8 +463,7 @@ def record_stage(
     ensure_pipeline_plan(workspace_path, templates_root=templates_root)
     document = load_run_status(workspace_path)
     pipeline_id = document.get(DOCUMENT_PIPELINE_ID_FIELD)
-    components = document.setdefault("components", {})
-    entry = components.setdefault(component_name, {"state": STATUS_RUNNING, "stages": []})
+    entry = _get_or_create_component_entry(document, component_name, default_state=STATUS_RUNNING)
     stages = entry.setdefault("stages", [])
     index = _stage_index(stages, stage_id)
     prior_stage = stages[index] if index is not None else {}
@@ -444,8 +506,7 @@ def complete_component(
     """Mark a component finished (``completed`` or ``failed``)."""
     ensure_pipeline_plan(workspace_path, templates_root=templates_root)
     document = load_run_status(workspace_path)
-    components = document.setdefault("components", {})
-    entry = components.setdefault(component_name, {"stages": []})
+    entry = _get_or_create_component_entry(document, component_name)
     entry["state"] = state
     save_run_status(workspace_path, document)
     logger.info("AUTOML_RUN_STATUS component=%s state=%s", component_name, state)

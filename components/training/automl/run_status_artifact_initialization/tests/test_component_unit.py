@@ -44,12 +44,14 @@ class TestRunStatusArtifactInitialization:
         assert doc["kfp_run_id"] == "run-xyz"
         assert doc["pipeline_name"] == "tabular-job-1"
         assert doc["run_status_pipeline_id"] == PIPELINE_TABULAR_TRAINING
-        assert set(doc["components"]) == {
+        component_ids = [component["id"] for component in doc["components"]]
+        assert component_ids == [
             COMPONENT_DATA_LOADER,
             COMPONENT_MODELS_TRAINING,
             COMPONENT_LEADERBOARD,
-        }
-        assert doc["components"][COMPONENT_DATA_LOADER]["state"] == "pending"
+        ]
+        loader = next(component for component in doc["components"] if component["id"] == COMPONENT_DATA_LOADER)
+        assert loader["state"] == "pending"
 
         artifact_file = Path(artifact.path) / RUN_STATUS_ARTIFACT_FILENAME
         assert artifact_file.is_file()

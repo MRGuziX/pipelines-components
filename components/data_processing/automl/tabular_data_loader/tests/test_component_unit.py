@@ -207,8 +207,9 @@ class TestRunStatusArtifact:
         assert status_path.exists()
         payload = json.loads(status_path.read_text())
         assert payload["kfp_run_id"] == "test-run-id"
-        assert payload["components"]["automl_data_loader"]["state"] == "completed"
-        stage_ids = [s["id"] for s in payload["components"]["automl_data_loader"]["stages"]]
+        loader = next(c for c in payload["components"] if c["id"] == "automl_data_loader")
+        assert loader["state"] == "completed"
+        stage_ids = [s["id"] for s in loader["stages"]]
         assert "read_and_sample" in stage_ids
         assert "split" in stage_ids
 
