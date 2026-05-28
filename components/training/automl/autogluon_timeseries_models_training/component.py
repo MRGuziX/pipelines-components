@@ -301,80 +301,8 @@ def autogluon_timeseries_models_training(
         return notebook
 
     for model_name in top_models:
-        model_name_full = f"{model_name}_FULL"
-        model_names_full.append(model_name_full)
-        output_path = Path(models_artifact.path) / model_name_full
-        output_path.mkdir(parents=True, exist_ok=True)
-        predictor_output = output_path / "predictor"
-
-        model_type = predictor._trainer.get_model_attribute(model_name, "type")
-        is_ensemble = issubclass(model_type, AbstractTimeSeriesEnsembleModel)
-        hyperparams_option = "ensemble_hyperparameters" if is_ensemble else "hyperparameters"
-        additional_fit_params = {hyperparams_option: {model_name: model_hyperparams[model_name]}}
-
-        predictor_refit = TimeSeriesPredictor(
-            prediction_length=prediction_length,
-            target=target,
-            eval_metric=eval_metric,
-            path=predictor_output,
-            verbosity=2,
-            known_covariates_names=known_covariates_names,
-        )
-        predictor_refit.fit(
-            train_data=full_train_ts_df,
-            **additional_fit_params,
-            time_limit=DEFAULT_TIME_LIMIT,
-            excluded_model_types=["Chronos", "Chronos2", "Toto"],
-        )
-        predictor_refit.save()
-        metrics = predictor_refit.evaluate(test_ts, metrics=list(AVAILABLE_METRICS.keys()))
-
-        metrics_dict = {
-            k: float(v) if hasattr(v, "item") else v
-            for k, v in metrics.items()
-            if not (isinstance(v, float) and (math.isnan(v) or math.isinf(v)))
-        }
-
-        metrics_path = output_path / "metrics"
-        metrics_path.mkdir(parents=True, exist_ok=True)
-        with (metrics_path / "metrics.json").open("w", encoding="utf-8") as f:
-            json.dump(metrics_dict, f, indent=2)
-
-        notebook_file = "timeseries_notebook.ipynb"
-        with (shared_automl_dir() / "notebook_templates" / notebook_file).open("r", encoding="utf-8") as f:
-            notebook = json.load(f)
-        replacements = {
-            "<REPLACE_RUN_ID>": run_id,
-            "<REPLACE_PIPELINE_NAME>": pipeline_name_trimmed,
-            "<REPLACE_MODEL_NAME>": model_name_full,
-            "<REPLACE_SAMPLE_ROW>": str(sample_row_list),
-            "<REPLACE_ID_COLUMN>": id_column,
-            "<REPLACE_TIMESTAMP_COLUMN>": timestamp_column,
-            "<REPLACE_KNOWN_COVARIATES_NAMES>": str(known_covariates_names or []),
-        }
-        notebook = replace_placeholder_in_notebook(notebook, replacements)
-
-        notebook_path = output_path / "notebooks"
-        notebook_path.mkdir(parents=True, exist_ok=True)
-        with (notebook_path / "automl_predictor_notebook.ipynb").open("w", encoding="utf-8") as f:
-            json.dump(notebook, f)
-
-        model_metadata = {
-            "name": model_name_full,
-            "location": {
-                "model_directory": model_name_full,
-                "predictor": str(Path(model_name_full) / "predictor"),
-                "notebook": str(Path(model_name_full) / "notebooks" / "automl_predictor_notebook.ipynb"),
-                "metrics": str(Path(model_name_full) / "metrics"),
-            },
-            "metrics": {
-                "test_data": metrics_dict,
-            },
-        }
-        models_metadata.append(model_metadata)
-        with (output_path / "model.json").open("w", encoding="utf-8") as f:
-            json.dump(model_metadata, f, indent=2)
         try:
+            model_name_full = f"{model_name}_FULL"
             output_path = Path(models_artifact.path) / model_name_full
             output_path.mkdir(parents=True, exist_ok=True)
             predictor_output = output_path / "predictor"
