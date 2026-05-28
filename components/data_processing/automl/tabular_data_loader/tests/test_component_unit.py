@@ -188,6 +188,7 @@ class TestRunStatusArtifact:
 
     @mock.patch.dict("os.environ", mocked_env_variables)
     def test_writes_run_status_json(self, tmp_path, monkeypatch):
+        """Test that run_status.json is written to workspace."""
         monkeypatch.delenv("MLFLOW_TRACKING_URI", raising=False)
         csv_content = "a,b,c\n1,2,3\n4,5,6\n"
         body_stream = _csv_body(csv_content)
@@ -213,6 +214,7 @@ class TestRunStatusArtifact:
 
     @mock.patch.dict("os.environ", mocked_env_variables)
     def test_publishes_run_status_kfp_artifact(self, tmp_path):
+        """Test that run_status KFP artifact is published."""
         csv_content = "a,b,c\n1,2,3\n"
         body_stream = _csv_body(csv_content)
         sampled_test = _make_test_artifact(tmp_path)

@@ -62,6 +62,7 @@ def autogluon_timeseries_models_training(
         prediction_length: Forecast horizon (number of timesteps).
         known_covariates_names: Optional list of known covariate column names.
         run_status_artifact: KFP artifact with a snapshot of ``.automl/run_status.json``.
+
     Returns:
         NamedTuple: top_models list, predictor_path, eval_metric, model_config.
     """

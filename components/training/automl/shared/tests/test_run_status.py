@@ -33,12 +33,14 @@ from kfp_components.components.training.automl.shared.run_status import (
 
 
 def test_pipeline_manifest_json_exists():
+    """Test that pipeline manifest JSON files exist."""
     templates = resolve_templates_dir() / "pipelines"
     assert (templates / f"{PIPELINE_TABULAR_TRAINING}.json").is_file()
     assert (templates / f"{PIPELINE_TIMESERIES_TRAINING}.json").is_file()
 
 
 def test_tabular_pipeline_manifest_covers_all_components():
+    """Test that tabular pipeline manifest covers all components."""
     manifest = load_pipeline_run_status_manifest(PIPELINE_TABULAR_TRAINING)
     assert manifest["pipeline_id"] == PIPELINE_TABULAR_TRAINING
     component_ids = pipeline_component_ids(PIPELINE_TABULAR_TRAINING)
@@ -58,6 +60,7 @@ def test_tabular_pipeline_manifest_covers_all_components():
 
 
 def test_timeseries_pipeline_manifest_covers_all_components():
+    """Test that timeseries pipeline manifest covers all components."""
     manifest = load_pipeline_run_status_manifest(PIPELINE_TIMESERIES_TRAINING)
     assert manifest["pipeline_id"] == PIPELINE_TIMESERIES_TRAINING
     component_ids = pipeline_component_ids(PIPELINE_TIMESERIES_TRAINING)
@@ -69,6 +72,7 @@ def test_timeseries_pipeline_manifest_covers_all_components():
 
 
 def test_init_seeds_full_pipeline_as_pending(tmp_path):
+    """Test that init seeds full pipeline as pending."""
     ws = str(tmp_path)
     init_run_status(
         ws,
@@ -95,6 +99,7 @@ def test_init_seeds_full_pipeline_as_pending(tmp_path):
 
 
 def test_ensure_pipeline_plan_preserves_progress(tmp_path):
+    """Test that ensure_pipeline_plan preserves progress."""
     ws = str(tmp_path)
     init_run_status(
         ws,
@@ -143,6 +148,7 @@ def test_record_stage_autofills_steps_from_manifest_on_completed(tmp_path):
 
 
 def test_init_and_stages(tmp_path):
+    """Test init and stage operations."""
     ws = str(tmp_path)
     init_run_status(
         ws,
@@ -164,6 +170,7 @@ def test_init_and_stages(tmp_path):
 
 
 def test_run_status_recorder(tmp_path):
+    """Test RunStatusRecorder class."""
     ws = str(tmp_path)
     RunStatusRecorder.init_pipeline_run(
         ws,
@@ -181,10 +188,12 @@ def test_run_status_recorder(tmp_path):
 
 
 def test_load_empty_returns_empty_dict(tmp_path):
+    """Test that load_run_status returns empty dict when no file exists."""
     assert load_run_status(str(tmp_path)) == {}
 
 
 def test_publish_run_status_artifact(tmp_path):
+    """Test that run_status artifact is published correctly."""
     ws = str(tmp_path / "ws")
     artifact_dir = str(tmp_path / "artifact")
     init_run_status(
@@ -202,6 +211,7 @@ def test_publish_run_status_artifact(tmp_path):
 
 
 def test_validate_component_stages_warns_on_missing(caplog):
+    """Test that validate_component_stages warns on missing stages."""
     document = {
         DOCUMENT_PIPELINE_ID_FIELD: PIPELINE_TABULAR_TRAINING,
         "components": {
@@ -216,6 +226,7 @@ def test_validate_component_stages_warns_on_missing(caplog):
 
 
 def test_validate_component_stages_warns_on_unknown(caplog):
+    """Test that validate_component_stages warns on unknown stages."""
     document = {
         DOCUMENT_PIPELINE_ID_FIELD: PIPELINE_TABULAR_TRAINING,
         "components": {
