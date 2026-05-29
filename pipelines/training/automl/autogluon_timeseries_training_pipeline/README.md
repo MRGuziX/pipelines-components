@@ -116,7 +116,11 @@ Dashboards join the static map (`component_stage_map.json`) to live progress (`c
 
 Use `component_id` (and stage `id` fields inside each file) to correlate artifacts. KFP task names are only for locating artifact paths in the store.
 
-Canonical component ids are defined in the pipeline JSON templates under [`run_status_templates/pipelines/`](../../../components/training/automl/shared/run_status_templates/pipelines/) (e.g. `autogluon-timeseries-training-pipeline.json`). Legacy workspace helpers in [`run_status.py`](../../../components/training/automl/shared/run_status.py) expose the same ids as `COMPONENT_*` constants.
+Canonical component ids are defined in the pipeline JSON templates under
+[`run_status_templates/pipelines/`](../../../components/training/automl/shared/run_status_templates/pipelines/)
+(e.g. `autogluon-timeseries-training-pipeline.json`). Legacy workspace helpers in
+[`run_status.py`](../../../components/training/automl/shared/run_status.py) expose the same ids as
+`COMPONENT_*` constants.
 
 ### Files stored in user storage
 
