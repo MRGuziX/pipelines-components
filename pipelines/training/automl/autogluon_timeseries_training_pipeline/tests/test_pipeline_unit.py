@@ -85,6 +85,7 @@ class TestAutogluonTimeseriesTrainingPipelineUnitTests:
                 "known_covariates_names",
                 "prediction_length",
                 "top_n",
+                "eval_metric",
             ):
                 assert name in content, f"Expected pipeline input '{name}' in compiled YAML"
         except Exception as e:
@@ -116,3 +117,5 @@ class TestAutogluonTimeseriesTrainingPipelineUnitTests:
                 pytest.fail(f"Compiled pipeline YAML must be ASCII-only: {exc}")
         finally:
             Path(tmp_path).unlink(missing_ok=True)
+        assert "componentInputParameter: eval_metric" in content
+        assert "outputParameterKey: eval_metric" in content

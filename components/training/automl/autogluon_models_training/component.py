@@ -81,7 +81,10 @@ def autogluon_models_training(
     import shutil
     from concurrent.futures import ThreadPoolExecutor
     from pathlib import Path
-    from typing import Any, NamedTuple
+    from typing import (
+        Any,
+        NamedTuple,
+    )  # NamedTuple must be imported inside the function body for KFP container execution
 
     import numpy as np
     import pandas as pd
@@ -114,6 +117,8 @@ def autogluon_models_training(
         raise TypeError("split_config must be a dictionary or None.")
     if positive_class is not None and not isinstance(positive_class, str):
         raise TypeError("positive_class must be a string or None.")
+    if eval_metric and not eval_metric.strip():
+        raise TypeError("eval_metric must be a non-empty string (or empty string '' to use the task-type default).")
 
     sampling_config = sampling_config or {}
     split_config = split_config or {}

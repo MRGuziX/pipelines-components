@@ -1261,6 +1261,24 @@ class TestAutogluonModelsTrainingUnitTests:
                 split_config=[],
             )
 
+    def test_rejects_whitespace_eval_metric(self, mock_notebooks):
+        """Whitespace-only eval_metric must raise TypeError, not be forwarded to AutoGluon."""
+        with pytest.raises(TypeError, match="eval_metric must be a non-empty string"):
+            autogluon_models_training.python_func(
+                label_column="target",
+                task_type="regression",
+                top_n=1,
+                train_data_path="/tmp/train.csv",
+                test_data=mock.MagicMock(path="/tmp/test.csv"),
+                workspace_path="/tmp/ws",
+                pipeline_name=PIPELINE_NAME,
+                run_id=RUN_ID,
+                sample_row=SAMPLE_ROW,
+                models_artifact=self._minimal_artifact(),
+                notebooks=mock_notebooks,
+                eval_metric="   ",
+            )
+
     # ── eval_metric parameter ─────────────────────────────────────────────────
 
     @mock.patch("pandas.read_csv")

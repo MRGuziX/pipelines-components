@@ -99,6 +99,7 @@ def autogluon_timeseries_models_training(
             ("timestamp_column", timestamp_column),
             ("train_data_path", train_data_path),
             ("workspace_path", workspace_path),
+            ("eval_metric", eval_metric),
         ):
             if not isinstance(value, str) or not value.strip():
                 raise TypeError(f"{param} must be a non-empty string.")
@@ -134,8 +135,6 @@ def autogluon_timeseries_models_training(
             raise TypeError("sampling_config must be a dictionary or None.")
         if split_config is not None and not isinstance(split_config, dict):
             raise TypeError("split_config must be a dictionary or None.")
-        if not isinstance(eval_metric, str) or not eval_metric.strip():
-            raise TypeError("eval_metric must be a non-empty string.")
         sampling_config = sampling_config or {}
         split_config = split_config or {}
 

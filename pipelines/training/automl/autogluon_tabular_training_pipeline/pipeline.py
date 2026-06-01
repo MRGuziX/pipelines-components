@@ -125,7 +125,7 @@ def autogluon_tabular_training_pipeline(
         task_type: "binary", "multiclass", or "regression"; drives metrics and model types.
         top_n: Number of top models to select and refit (default: 3); positive integer from range [1, 10].
         positive_class: Optional label value for the positive class in binary classification. Defaults to the second unique class after sorting label values.
-        eval_metric: Metric used for model ranking. Empty string (default) lets AutoGluon pick the task-type default ("accuracy" for binary and multiclass classification, "r2" for regression).
+        eval_metric: Metric used for model ranking. Empty string (default) is resolved by the component to "r2" for regression and "accuracy" for binary and multiclass classification.
 
     Returns:
         HTML artifact with leaderboard of refitted models ranked by task_type metric (e.g. accuracy, r2).
