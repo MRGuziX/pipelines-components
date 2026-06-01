@@ -143,7 +143,6 @@ def autogluon_models_training(
     with status:
         # Stage: load_data
         status.record("load_data", "started")
-        status.record("load_data", "completed")
 
         DEFAULT_PRESET = "medium_quality"
         DEFAULT_TIME_LIMIT = 30 * 60  # 30 minutes
@@ -178,6 +177,13 @@ def autogluon_models_training(
             if extra_train_df.empty:
                 logger.warning("Extra train CSV is empty; passing train_data_extra=None to refit_full.")
                 extra_train_df = None
+
+        status.record(
+            "load_data",
+            "completed",
+            train_rows=len(train_data_df),
+            test_rows=len(test_data_df),
+        )
 
         eval_metric = "r2" if task_type == "regression" else "accuracy"
 

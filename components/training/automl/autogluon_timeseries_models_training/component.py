@@ -141,14 +141,23 @@ def autogluon_timeseries_models_training(
             id_column=id_column,
             timestamp_column=timestamp_column,
         )
-        logger.info("Train TimeSeriesDataFrame: %s rows, %s items", len(train_ts), train_ts.num_items)
-        status.record("load_data", "completed")
-
-        # Convert test data to TimeSeriesDataFrame
         test_ts = TimeSeriesDataFrame.from_data_frame(
             test_df,
             id_column=id_column,
             timestamp_column=timestamp_column,
+        )
+        logger.info(
+            "Train TimeSeriesDataFrame: %s rows, %s items; test: %s rows, %s items",
+            len(train_ts),
+            train_ts.num_items,
+            len(test_ts),
+            test_ts.num_items,
+        )
+        status.record(
+            "load_data",
+            "completed",
+            train_rows=len(train_ts),
+            test_rows=len(test_ts),
         )
 
         # Create predictor path in workspace

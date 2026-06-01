@@ -11,12 +11,12 @@ from kfp_components.components.training.automl.component_stage_map_publisher imp
 MAX_CPUS = "32"
 MAX_MEMORY = "64Gi"
 
-# Must match @dsl.pipeline name=... and run_status_templates/pipelines/<name>.json
-RUN_STATUS_PIPELINE_ID = "autogluon-timeseries-training-pipeline"
+# Must match run_status_templates/pipelines/<name>.json
+PIPELINE_NAME = "autogluon-timeseries-training-pipeline"
 
 
 @dsl.pipeline(
-    name="autogluon-timeseries-training-pipeline",
+    name=PIPELINE_NAME,
     description=(
         "End-to-end AutoGluon time series forecasting pipeline. Loads time series data from S3 in "
         "TimeSeriesDataFrame format (item_id, timestamp, target), trains multiple AutoGluon TimeSeries models "
@@ -129,7 +129,7 @@ def autogluon_timeseries_training_pipeline(
     """
     # Publish component-to-stage-to-step map first so dashboards know expected structure
     component_stage_map_task = publish_component_stage_map(
-        pipeline_id=RUN_STATUS_PIPELINE_ID,
+        pipeline_id=PIPELINE_NAME,
         run_id=dsl.PIPELINE_JOB_ID_PLACEHOLDER,
     )
     component_stage_map_task.set_caching_options(False)

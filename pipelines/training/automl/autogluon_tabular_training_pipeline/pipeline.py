@@ -9,12 +9,12 @@ from kfp_components.components.training.automl.component_stage_map_publisher imp
 MAX_CPUS = "32"
 MAX_MEMORY = "64Gi"
 
-# Must match @dsl.pipeline name=... and run_status_templates/pipelines/<name>.json
-RUN_STATUS_PIPELINE_ID = "autogluon-tabular-training-pipeline"
+# Must match run_status_templates/pipelines/<name>.json
+PIPELINE_NAME = "autogluon-tabular-training-pipeline"
 
 
 @dsl.pipeline(
-    name="autogluon-tabular-training-pipeline",
+    name=PIPELINE_NAME,
     description=(
         "End-to-end AutoGluon tabular training pipeline implementing a two-stage approach: "
         "first builds and selects top-performing models on sampled data, then refits them "
@@ -155,7 +155,7 @@ def autogluon_tabular_training_pipeline(
 
     # Publish component-to-stage-to-step map first so dashboards know expected structure
     component_stage_map_task = publish_component_stage_map(
-        pipeline_id=RUN_STATUS_PIPELINE_ID,
+        pipeline_id=PIPELINE_NAME,
         run_id=dsl.PIPELINE_JOB_ID_PLACEHOLDER,
     )
     component_stage_map_task.set_caching_options(False)
