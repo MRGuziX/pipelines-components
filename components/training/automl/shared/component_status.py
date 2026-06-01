@@ -84,8 +84,8 @@ class ComponentStatusTracker:
         }
 
         if existing_idx is not None:
-            # Update existing stage
-            self.stages[existing_idx] = stage_data
+            # Update existing stage, preserving previously recorded metadata
+            self.stages[existing_idx].update(stage_data)
         else:
             # Append new stage
             self.stages.append(stage_data)

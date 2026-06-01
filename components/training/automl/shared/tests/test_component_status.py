@@ -19,7 +19,7 @@ class TestComponentStatusTracker:
     def test_record_and_save(self, tmp_path: Path) -> None:
         """save() writes stages and component_id to component_status.json."""
         tracker = ComponentStatusTracker(str(tmp_path), "automl_data_loader")
-        tracker.record("validate_inputs", "started")
+        tracker.record("validate_inputs", "started", rows=5)
         tracker.record("validate_inputs", "completed")
         tracker.save()
 
@@ -27,6 +27,7 @@ class TestComponentStatusTracker:
         assert data["component_id"] == "automl_data_loader"
         assert len(data["stages"]) == 1
         assert data["stages"][0]["status"] == "completed"
+        assert data["stages"][0]["rows"] == 5
 
     def test_mark_active_failed_marks_started_stage(self, tmp_path: Path) -> None:
         """mark_active_failed() updates the in-progress stage to failed."""

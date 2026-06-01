@@ -80,15 +80,17 @@ class TestPublishComponentStageMap:
             "initial_document": {"components": []},
             "components": [{"id": "automl_data_loader", "stages": []}],
         }
+        mock_load = mock.Mock(return_value=legacy_manifest.copy())
         monkeypatch.setattr(
             "kfp_components.components.training.automl.shared.run_status.load_pipeline_run_status_manifest",
-            lambda _pipeline_id: legacy_manifest.copy(),
+            mock_load,
         )
         publish_component_stage_map.python_func(
             pipeline_id=PIPELINE_TABULAR,
             run_id="run-1",
             component_stage_map=component_stage_map_artifact,
         )
+        mock_load.assert_called_once_with(PIPELINE_TABULAR)
         document = json.loads(
             (Path(component_stage_map_artifact.path) / "component_stage_map.json").read_text(encoding="utf-8")
         )
