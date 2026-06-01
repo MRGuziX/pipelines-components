@@ -232,74 +232,12 @@ def prepare_responses_api_requests(
 import copy
 import json
 import os
-from collections import Counter
 from getpass import getpass
 from pathlib import Path
 from urllib import request
 from urllib.error import HTTPError, URLError
 import ssl
 import sys
-
-try:
-    from langdetect import detect as _langdetect_detect, LangDetectException
-    _HAS_LANGDETECT = True
-except ImportError:
-    _HAS_LANGDETECT = False
-
-_LANG_MAP = {{
-    "ja": "Japanese", "ko": "Korean", "zh-cn": "Chinese", "zh-tw": "Chinese",
-    "de": "German", "fr": "French", "es": "Spanish", "pt": "Portuguese",
-    "it": "Italian", "ru": "Russian", "ar": "Arabic", "hi": "Hindi",
-    "th": "Thai", "vi": "Vietnamese", "pl": "Polish", "nl": "Dutch",
-    "sv": "Swedish", "cs": "Czech", "tr": "Turkish",
-}}
-
-_SCRIPT_RANGES = [
-    ("ja", [(0x3040, 0x309F), (0x30A0, 0x30FF), (0x31F0, 0x31FF)]),
-    ("ko", [(0xAC00, 0xD7AF), (0x1100, 0x11FF), (0x3130, 0x318F)]),
-    ("zh-cn", [(0x4E00, 0x9FFF), (0x3400, 0x4DBF), (0x20000, 0x2A6DF)]),
-    ("ar", [(0x0600, 0x06FF), (0x0750, 0x077F), (0x08A0, 0x08FF)]),
-    ("th", [(0x0E00, 0x0E7F)]),
-    ("hi", [(0x0900, 0x097F)]),
-    ("ru", [(0x0400, 0x04FF), (0x0500, 0x052F)]),
-]
-
-
-def _detect_language_by_script(text):
-    script_counts = {{}}
-    for ch in text:
-        cp = ord(ch)
-        for lang_code, ranges in _SCRIPT_RANGES:
-            if any(lo <= cp <= hi for lo, hi in ranges):
-                script_counts[lang_code] = script_counts.get(lang_code, 0) + 1
-                break
-    if not script_counts:
-        return None
-    best = max(script_counts, key=script_counts.get)
-    if best == "zh-cn" and script_counts.get("ja", 0) > 0:
-        return "ja"
-    return best
-
-
-def _detect_language_instruction(question: str) -> str:
-    """Detect question language and return explicit instruction, or empty for English."""
-    if not question.strip():
-        return ""
-    if _HAS_LANGDETECT:
-        try:
-            code = _langdetect_detect(question)
-        except (LangDetectException, Exception):
-            code = None
-        if code and code != "en":
-            name = _LANG_MAP.get(code)
-            if name:
-                return f"You MUST respond in {{name}}."
-    code = _detect_language_by_script(question)
-    if code:
-        name = _LANG_MAP.get(code)
-        if name:
-            return f"You MUST respond in {{name}}."
-    return ""
 
 
 OGX_BASE_URL = "{base_url.rstrip("/")}"
@@ -419,9 +357,6 @@ def main() -> int:
             return 0
         body = copy.deepcopy(template)
         _set_question(body, question)
-        lang_instr = _detect_language_instruction(question)
-        if lang_instr and "instructions" in body and lang_instr not in body["instructions"]:
-            body["instructions"] = f"{{lang_instr}} {{body['instructions']}}"
         rc = _post_responses(body, api_key, ssl_context)
         if rc != 0:
             return rc

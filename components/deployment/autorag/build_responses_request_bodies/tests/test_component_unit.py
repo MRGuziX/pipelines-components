@@ -205,13 +205,25 @@ class TestBuildOgxV1ResponsesBody:
         assert "file_search results" in body["instructions"]
         assert "Respond in the same language as the user question." in body["instructions"]
 
-    def test_script_includes_language_detection(self, tmp_path):
-        """Generated helper script includes langdetect-based language detection."""
+    def test_script_has_no_langdetect_dependency(self, tmp_path):
+        """Generated helper script must not depend on langdetect."""
         out, _ = _run_python_func(tmp_path, [("p1", _minimal_pattern())])
         script = (out / "p1" / SCRIPT_FILENAME).read_text(encoding="utf-8")
-        assert "_detect_language_instruction" in script
-        assert "langdetect" in script
-        assert "_LANG_MAP" in script
+        assert "langdetect" not in script
+        assert "_detect_language_instruction" not in script
+        assert "_LANG_MAP" not in script
+
+    def test_detected_language_instruction_not_duplicated(self, tmp_path):
+        """When system_message_text already has 'You MUST respond in X.', instructions don't double it."""
+        pattern = _minimal_pattern()
+        pattern["settings"]["generation"]["detected_language"] = {"code": "ja", "name": "Japanese"}
+        pattern["settings"]["generation"]["system_message_text"] = (
+            "You MUST respond in Japanese. Answer based on context only."
+        )
+        out, _ = _run_python_func(tmp_path, [("p1", pattern)])
+        body = json.loads((out / "p1" / OUTPUT_FILENAME).read_text(encoding="utf-8"))
+        count = body["instructions"].count("You MUST respond in Japanese.")
+        assert count == 1, f"Expected 1 occurrence, got {count}: {body['instructions']}"
 
     def test_script_supports_custom_ca_bundle_and_insecure_tls(self, tmp_path):
         """Generated helper exposes CA-bundle env vars and a dev-only insecure flag.
