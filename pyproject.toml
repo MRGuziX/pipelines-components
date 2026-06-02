@@ -86,6 +86,8 @@ packages = [
     "kfp_components.components.deployment.kubeflow_model_registry",
     "kfp_components.components.deployment.model_deployment",
     "kfp_components.components.evaluation",
+    "kfp_components.components.evaluation.evalhub",
+    "kfp_components.components.evaluation.evalhub.kserve",
     "kfp_components.components.evaluation.lm_eval",
     "kfp_components.components.training",
     "kfp_components.components.training.automl",
@@ -125,6 +127,13 @@ packages = [
     "kfp_components.pipelines.training.finetuning.osft_minimal",
     "kfp_components.pipelines.training.finetuning.sft",
     "kfp_components.pipelines.training.finetuning.sft_minimal",
+    "kfp_components.pipelines.training.finetuning_evalhub",
+    "kfp_components.pipelines.training.finetuning_evalhub.lora",
+    "kfp_components.pipelines.training.finetuning_evalhub.lora_minimal",
+    "kfp_components.pipelines.training.finetuning_evalhub.osft",
+    "kfp_components.pipelines.training.finetuning_evalhub.osft_minimal",
+    "kfp_components.pipelines.training.finetuning_evalhub.sft",
+    "kfp_components.pipelines.training.finetuning_evalhub.sft_minimal",
 ]
 
 [tool.setuptools.package-dir]
