@@ -1,0 +1,420 @@
+"""Build metrics/back_testing.json for AutoGluon time series models."""
+
+from __future__ import annotations
+
+import logging
+import math
+from datetime import datetime, timezone
+from typing import Any
+
+import numpy as np
+import pandas as pd
+
+logger = logging.getLogger(__name__)
+
+DEFAULT_NUM_VAL_WINDOWS = 3
+MAX_FORECAST_POINTS_PER_WINDOW = 500
+# Point-forecast metrics computed per series; used internally for best/worst selection.
+_SERIES_POINT_METRICS = frozenset({"MAPE", "RMSE", "MAE"})
+_DEFAULT_SERIES_RANKING_METRIC = "MAPE"
+
+# Metrics where lower values indicate better performance (AutoGluon time series defaults).
+_LOWER_IS_BETTER = frozenset(
+    {
+        "MASE",
+        "MAPE",
+        "SMAPE",
+        "MSE",
+        "RMSE",
+        "MAE",
+        "WQL",
+        "SQL",
+        "RMSSE",
+        "WAPE",
+    }
+)
+
+
+def to_finite_float(value: Any) -> float | None:
+    """Return a finite float or None."""
+    if value is None:
+        return None
+    if hasattr(value, "item"):
+        value = value.item()
+    if not isinstance(value, (int, float)):
+        return None
+    number = float(value)
+    if not math.isfinite(number):
+        return None
+    return number
+
+
+def filter_finite_metrics(metrics: dict[str, Any]) -> dict[str, float]:
+    """Keep only finite scalar metric values (KFP-safe)."""
+    cleaned: dict[str, float] = {}
+    for key, value in metrics.items():
+        number = to_finite_float(value)
+        if number is not None:
+            cleaned[key] = number
+    return cleaned
+
+
+def serialize_timestamp(value: Any) -> str:
+    """Serialize timestamps to ISO-8601 UTC-style strings."""
+    if hasattr(value, "to_pydatetime"):
+        value = value.to_pydatetime()
+    if isinstance(value, datetime):
+        if value.tzinfo is not None:
+            value = value.astimezone(timezone.utc).replace(tzinfo=None)
+        text = value.isoformat()
+        if text.endswith("Z") or "+" in text:
+            return text.replace("+00:00", "Z")
+        return f"{text}Z" if "T" in text else f"{text}T00:00:00Z"
+    text = str(value)
+    if text.endswith("+00:00"):
+        return text.replace("+00:00", "Z")
+    if text.endswith("Z"):
+        return text
+    if "T" in text:
+        return f"{text}Z"
+    if len(text) >= 10 and text[4] == "-" and text[7] == "-":
+        return f"{text[:10]}T00:00:00Z"
+    return text
+
+
+def serialize_date(value: Any) -> str:
+    """Serialize timestamps to YYYY-MM-DD for compact window bounds."""
+    timestamp = serialize_timestamp(value)
+    return timestamp[:10] if len(timestamp) >= 10 else timestamp
+
+
+def _is_higher_better(eval_metric: str) -> bool:
+    metric = (eval_metric or "").strip()
+    if metric.startswith("-"):
+        return True
+    return metric.upper() not in _LOWER_IS_BETTER
+
+
+def _mean_prediction_column(predictions: pd.DataFrame) -> str:
+    if "mean" in predictions.columns:
+        return "mean"
+    numeric_cols = [c for c in predictions.columns if to_finite_float(c) is not None]
+    if numeric_cols:
+        return str(numeric_cols[0])
+    return str(predictions.columns[0])
+
+
+def _quantile_bounds(predictions: pd.DataFrame) -> tuple[str | None, str | None]:
+    lower = None
+    upper = None
+    for col in predictions.columns:
+        col_text = str(col)
+        try:
+            level = float(col)
+        except (TypeError, ValueError):
+            continue
+        if level <= 0.2 and lower is None:
+            lower = col_text
+        if level >= 0.8 and upper is None:
+            upper = col_text
+    return lower, upper
+
+
+def _item_ids(tsdf: pd.DataFrame) -> list[Any]:
+    if isinstance(tsdf.index, pd.MultiIndex):
+        return list(tsdf.index.get_level_values(0).unique())
+    return [None]
+
+
+def _holdout_frame(tsdf: pd.DataFrame, prediction_length: int) -> pd.DataFrame:
+    """Return the forecast horizon rows (last prediction_length steps per series)."""
+    if prediction_length <= 0:
+        raise ValueError("prediction_length must be a positive integer.")
+
+    if not isinstance(tsdf.index, pd.MultiIndex):
+        return tsdf.tail(prediction_length)
+
+    parts = []
+    for item_id in _item_ids(tsdf):
+        item_df = tsdf.loc[item_id]
+        parts.append(item_df.tail(prediction_length))
+    return pd.concat(parts, keys=[i for i in _item_ids(tsdf)], names=tsdf.index.names)
+
+
+def _window_date_bounds(targets_window: pd.DataFrame, prediction_length: int, target: str) -> tuple[str, str]:
+    holdout = _holdout_frame(targets_window, prediction_length)
+    timestamps = holdout.index.get_level_values(-1) if isinstance(holdout.index, pd.MultiIndex) else holdout.index
+    timestamps = pd.to_datetime(timestamps, errors="coerce").dropna()
+    if timestamps.empty:
+        return "", ""
+    return serialize_date(timestamps.min()), serialize_date(timestamps.max())
+
+
+def _forecast_data_for_item(
+    predictions: pd.DataFrame,
+    targets_window: pd.DataFrame,
+    item_id: Any,
+    target: str,
+    prediction_length: int,
+) -> list[dict[str, Any]]:
+    if isinstance(predictions.index, pd.MultiIndex):
+        if item_id not in predictions.index.get_level_values(0):
+            return []
+        pred_item = predictions.loc[item_id]
+    else:
+        pred_item = predictions
+
+    holdout = _holdout_frame(targets_window, prediction_length)
+    if isinstance(holdout.index, pd.MultiIndex):
+        if item_id not in holdout.index.get_level_values(0):
+            return []
+        target_item = holdout.loc[item_id]
+    else:
+        target_item = holdout
+
+    pred_col = _mean_prediction_column(pred_item)
+    lower_col, upper_col = _quantile_bounds(pred_item)
+
+    rows: list[dict[str, Any]] = []
+    for ts in pred_item.index[:MAX_FORECAST_POINTS_PER_WINDOW]:
+        predicted = to_finite_float(pred_item.loc[ts, pred_col])
+        if predicted is None:
+            continue
+        actual = None
+        if ts in target_item.index and target in target_item.columns:
+            actual = to_finite_float(target_item.loc[ts, target])
+        row: dict[str, Any] = {
+            "timestamp": serialize_timestamp(ts),
+            "predicted": predicted,
+        }
+        if actual is not None:
+            row["actual"] = actual
+        if lower_col is not None:
+            lower = to_finite_float(pred_item.loc[ts, lower_col])
+            if lower is not None:
+                row["lower_bound"] = lower
+        if upper_col is not None:
+            upper = to_finite_float(pred_item.loc[ts, upper_col])
+            if upper is not None:
+                row["upper_bound"] = upper
+        rows.append(row)
+    return rows
+
+
+def _point_errors(actual: np.ndarray, predicted: np.ndarray) -> dict[str, float | None]:
+    mask = np.isfinite(actual) & np.isfinite(predicted)
+    if not mask.any():
+        return {"MAPE": None, "RMSE": None, "MAE": None}
+    actual_f = actual[mask]
+    predicted_f = predicted[mask]
+    mae = float(np.mean(np.abs(actual_f - predicted_f)))
+    rmse = float(np.sqrt(np.mean((actual_f - predicted_f) ** 2)))
+    denom = np.abs(actual_f)
+    mape_mask = denom > 0
+    if mape_mask.any():
+        mape = float(np.mean(np.abs((actual_f[mape_mask] - predicted_f[mape_mask]) / actual_f[mape_mask]) * 100))
+    else:
+        mape = None
+    return {"MAPE": mape, "RMSE": rmse, "MAE": mae}
+
+
+def _item_window_metrics(
+    predictions: pd.DataFrame,
+    targets_window: pd.DataFrame,
+    item_id: Any,
+    target: str,
+    prediction_length: int,
+) -> dict[str, float]:
+    rows = _forecast_data_for_item(predictions, targets_window, item_id, target, prediction_length)
+    actual = np.array([r["actual"] for r in rows if "actual" in r], dtype=float)
+    predicted = np.array([r["predicted"] for r in rows], dtype=float)
+    if len(actual) != len(predicted) or len(actual) == 0:
+        return {}
+    return {k: v for k, v in _point_errors(actual, predicted).items() if v is not None}
+
+
+def _average_metrics(metric_dicts: list[dict[str, float]]) -> dict[str, float]:
+    if not metric_dicts:
+        return {}
+    keys = {key for metrics in metric_dicts for key in metrics}
+    averaged: dict[str, float] = {}
+    for key in keys:
+        values = [metrics[key] for metrics in metric_dicts if key in metrics]
+        if values:
+            averaged[key] = float(np.mean(values))
+    return averaged
+
+
+def _normalize_metric_name(metric: str) -> str:
+    return (metric or "").strip().lstrip("-").upper()
+
+
+def _series_ranking_metric(eval_metric: str) -> str:
+    """Metric used to rank best/worst series (internal; not serialized)."""
+    normalized = _normalize_metric_name(eval_metric)
+    if normalized in _SERIES_POINT_METRICS:
+        return normalized
+    return _DEFAULT_SERIES_RANKING_METRIC
+
+
+def _select_best_worst(
+    series_averages: dict[Any, dict[str, float]],
+    ranking_metric: str,
+) -> tuple[Any | None, Any | None]:
+    if not series_averages:
+        return None, None
+
+    higher_is_better = _is_higher_better(ranking_metric)
+
+    def sort_key(item: tuple[Any, dict[str, float]]) -> float:
+        value = item[1].get(ranking_metric)
+        if value is None:
+            return float("inf") if not higher_is_better else float("-inf")
+        return -value if higher_is_better else value
+
+    ordered = sorted(series_averages.items(), key=sort_key)
+    return ordered[0][0], ordered[-1][0]
+
+
+def _build_series_analysis(
+    predictions_windows: list[pd.DataFrame],
+    targets_windows: list[pd.DataFrame],
+    *,
+    target: str,
+    prediction_length: int,
+    eval_metric: str,
+) -> dict[str, Any]:
+    item_ids: set[Any] = set()
+    for targets_window in targets_windows:
+        item_ids.update(_item_ids(targets_window))
+
+    per_item_window_metrics: dict[Any, list[dict[str, float]]] = {item_id: [] for item_id in item_ids}
+    for predictions, targets_window in zip(predictions_windows, targets_windows, strict=True):
+        for item_id in item_ids:
+            metrics = _item_window_metrics(predictions, targets_window, item_id, target, prediction_length)
+            if metrics:
+                per_item_window_metrics[item_id].append(metrics)
+
+    series_averages = {
+        item_id: _average_metrics(metrics_list)
+        for item_id, metrics_list in per_item_window_metrics.items()
+        if metrics_list
+    }
+    ranking_metric = _series_ranking_metric(eval_metric)
+    best_id, worst_id = _select_best_worst(series_averages, ranking_metric)
+
+    def _series_payload(item_id: Any | None) -> dict[str, Any] | None:
+        if item_id is None:
+            return None
+        windows_payload = []
+        for window_id, (predictions, targets_window) in enumerate(
+            zip(predictions_windows, targets_windows, strict=True)
+        ):
+            window_metrics = _item_window_metrics(predictions, targets_window, item_id, target, prediction_length)
+            if not window_metrics:
+                continue
+            windows_payload.append(
+                {
+                    "window_id": window_id,
+                    "metrics": window_metrics,
+                    "forecast_data": _forecast_data_for_item(
+                        predictions, targets_window, item_id, target, prediction_length
+                    ),
+                }
+            )
+        if not windows_payload:
+            return None
+        return {
+            "item_id": item_id.item() if hasattr(item_id, "item") else item_id,
+            "avg_metrics": series_averages.get(item_id, {}),
+            "windows": windows_payload,
+        }
+
+    return {
+        "num_series_evaluated": len(series_averages),
+        "best_performer": _series_payload(best_id),
+        "worst_performer": _series_payload(worst_id),
+    }
+
+
+def build_back_testing_json(
+    predictor: Any,
+    *,
+    model_name: str,
+    model_name_full: str,
+    train_data: Any,
+    eval_metric: str,
+    target: str,
+    id_column: str,
+    timestamp_column: str,
+    prediction_length: int,
+    num_val_windows: int = DEFAULT_NUM_VAL_WINDOWS,
+    metrics: list[str] | None = None,
+) -> dict[str, Any]:
+    """Build back_testing.json aligned with the model insights ADR schema."""
+    if num_val_windows <= 0:
+        raise ValueError("num_val_windows must be a positive integer.")
+    if not hasattr(predictor, "backtest_predictions") or not hasattr(predictor, "backtest_targets"):
+        raise AttributeError("TimeSeriesPredictor backtest API is unavailable on this AutoGluon version.")
+
+    backtest_kwargs: dict[str, Any] = {
+        "data": train_data,
+        "num_val_windows": num_val_windows,
+        "model": model_name,
+        "use_cache": False,
+    }
+
+    predictions_windows = predictor.backtest_predictions(**backtest_kwargs)
+    targets_windows = predictor.backtest_targets(data=train_data, num_val_windows=num_val_windows)
+    if len(predictions_windows) != len(targets_windows):
+        raise ValueError(
+            f"backtest predictions/targets window count mismatch: {len(predictions_windows)} vs {len(targets_windows)}"
+        )
+
+    metric_names = metrics or [eval_metric]
+    per_window_metrics: list[dict[str, Any]] = []
+    num_windows = len(predictions_windows)
+    cutoffs = range(-num_windows * prediction_length, 0, prediction_length)
+    for window_id, cutoff in enumerate(cutoffs):
+        evaluate_kwargs: dict[str, Any] = {
+            "data": train_data,
+            "model": model_name,
+            "metrics": metric_names,
+            "cutoff": cutoff,
+        }
+        try:
+            window_scores = filter_finite_metrics(predictor.evaluate(**evaluate_kwargs))
+        except Exception as exc:
+            logger.warning("Backtest evaluate failed for window %s (cutoff=%s): %s", window_id, cutoff, exc)
+            window_scores = {}
+        test_start, test_end = "", ""
+        if window_id < len(targets_windows):
+            test_start, test_end = _window_date_bounds(targets_windows[window_id], prediction_length, target)
+        per_window_metrics.append(
+            {
+                "window_id": window_id,
+                "test_start": test_start,
+                "test_end": test_end,
+                "metrics": window_scores,
+            }
+        )
+
+    series_analysis = _build_series_analysis(
+        predictions_windows,
+        targets_windows,
+        target=target,
+        prediction_length=prediction_length,
+        eval_metric=eval_metric,
+    )
+
+    return {
+        "model_name": model_name_full,
+        "prediction_length": prediction_length,
+        "num_val_windows": len(predictions_windows),
+        "eval_metric": eval_metric,
+        "target": target,
+        "id_column": id_column,
+        "timestamp_column": timestamp_column,
+        "per_window_metrics": per_window_metrics,
+        "series_analysis": series_analysis,
+    }

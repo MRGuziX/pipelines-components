@@ -346,6 +346,30 @@ def autogluon_timeseries_models_training(
                 with (metrics_path / "metrics.json").open("w", encoding="utf-8") as f:
                     json.dump(metrics_dict, f, indent=2)
 
+                from kfp_components.components.training.automl.shared.back_testing import build_back_testing_json
+
+                try:
+                    back_testing_payload = build_back_testing_json(
+                        predictor_refit,
+                        model_name=model_name,
+                        model_name_full=model_name_full,
+                        train_data=full_train_ts_df,
+                        eval_metric=eval_metric,
+                        target=target,
+                        id_column=id_column,
+                        timestamp_column=timestamp_column,
+                        prediction_length=prediction_length,
+                        metrics=list(AVAILABLE_METRICS.keys()),
+                    )
+                    with (metrics_path / "back_testing.json").open("w", encoding="utf-8") as f:
+                        json.dump(back_testing_payload, f, indent=2)
+                except Exception as backtest_exc:
+                    logger.warning(
+                        "Could not generate back_testing.json for model %r: %s. Skipping backtest artifact.",
+                        model_name_full,
+                        backtest_exc,
+                    )
+
                 notebook_file = "timeseries_notebook.ipynb"
                 with (shared_automl_dir() / "notebook_templates" / notebook_file).open("r", encoding="utf-8") as f:
                     notebook = json.load(f)
@@ -372,6 +396,7 @@ def autogluon_timeseries_models_training(
                         "predictor": str(Path(model_name_full) / "predictor"),
                         "notebook": str(Path(model_name_full) / "notebooks" / "automl_predictor_notebook.ipynb"),
                         "metrics": str(Path(model_name_full) / "metrics"),
+                        "back_testing": str(Path(model_name_full) / "metrics" / "back_testing.json"),
                     },
                     "metrics": {
                         "test_data": metrics_dict,
