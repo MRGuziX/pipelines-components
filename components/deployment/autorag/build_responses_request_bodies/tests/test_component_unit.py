@@ -183,6 +183,18 @@ class TestBuildOgxV1ResponsesBody:
         body = json.loads((out / "p1" / OUTPUT_FILENAME).read_text(encoding="utf-8"))
         assert "Respond in the same language as the user question." in body["instructions"]
 
+    def test_english_detected_language_does_not_add_explicit_instruction(self, tmp_path):
+        """English detected_language should not produce 'You MUST respond in English.'."""
+        pattern = _minimal_pattern()
+        pattern["settings"]["generation"]["detected_language"] = {
+            "code": "en",
+            "name": "English",
+        }
+        out, _ = _run_python_func(tmp_path, [("p1", pattern)])
+        body = json.loads((out / "p1" / OUTPUT_FILENAME).read_text(encoding="utf-8"))
+        assert "You MUST respond in English." not in body["instructions"]
+        assert "Respond in the same language as the user question." in body["instructions"]
+
     def test_input_uses_placeholder_not_generation_template(self, tmp_path):
         """``input`` uses the fixed placeholder, not ``user_message_text`` template expansion."""
         pattern = _minimal_pattern()

@@ -125,6 +125,8 @@ def prepare_responses_api_requests(
         """Build explicit language instruction from detected_language metadata."""
         if not isinstance(detected_language, dict):
             return ""
+        if detected_language.get("code") == "en":
+            return ""
         name = detected_language.get("name", "")
         if not name:
             return ""

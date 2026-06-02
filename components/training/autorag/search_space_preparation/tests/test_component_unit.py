@@ -256,6 +256,143 @@ class TestSearchSpacePreparationUnitTests:
                     )
 
 
+class _SentinelAfterLanguageDetection(Exception):
+    """Raised to abort after language detection completes."""
+
+
+class TestLanguageDetection:
+    """Tests for LLM-based language detection in search_space_preparation."""
+
+    def _make_ogx_with_chat(self, llm_response_text):
+        """Build OGX mock that returns a chat completion with given text."""
+        ogx_mod = _make_ogx_client_module()
+
+        mock_model = mock.MagicMock()
+        mock_model.identifier = "test-llm"
+        mock_model.model_type = "llm"
+
+        mock_models_response = mock.MagicMock()
+        mock_models_response.data = [mock_model]
+
+        mock_choice = mock.MagicMock()
+        mock_choice.message.content = llm_response_text
+        mock_chat_response = mock.MagicMock()
+        mock_chat_response.choices = [mock_choice]
+
+        mock_client = mock.MagicMock()
+        mock_client.models.list.return_value = mock_models_response
+        mock_client.chat.completions.create.return_value = mock_chat_response
+        ogx_mod.OgxClient.return_value = mock_client
+
+        return ogx_mod, mock_client
+
+    def _setup_mocks(self, tmp_path, llm_response_text, ogx_mod=None, mock_client=None):
+        """Set up mocks that let the component flow reach language detection.
+
+        Raises _SentinelAfterLanguageDetection from BenchmarkData (called right after detection).
+        """
+        import json
+
+        mocks = _make_all_mocks()
+
+        mock_pd = mock.MagicMock()
+        import pandas as pd
+
+        mock_pd.read_json = pd.read_json
+        mocks["pandas"] = mock_pd
+
+        if ogx_mod is None:
+            ogx_mod, mock_client = self._make_ogx_with_chat(llm_response_text)
+        mocks["ogx_client"] = ogx_mod
+
+        mocks["ai4rag.core.experiment.benchmark_data"].BenchmarkData.side_effect = _SentinelAfterLanguageDetection
+
+        benchmark = [
+            {"question": "Was ist das?", "correct_answers": [["etwas"]], "correct_answer_document_ids": [["d"]]}
+        ]
+        test_data = tmp_path / "test_data.json"
+        test_data.write_text(json.dumps(benchmark))
+
+        test_data_art = mock.MagicMock(path=str(test_data))
+        extracted_art = mock.MagicMock(path=str(tmp_path / "ext"))
+        report_art = mock.MagicMock(path=str(tmp_path / "report.yml"))
+
+        return mocks, mock_client, test_data_art, extracted_art, report_art
+
+    def _run(self, mocks, test_data_art, extracted_art, report_art, **kwargs):
+        with (
+            mock.patch.dict(sys.modules, mocks),
+            mock.patch.dict(
+                "os.environ", {"OGX_CLIENT_BASE_URL": "https://ogx.example.com", "OGX_CLIENT_API_KEY": "key"}
+            ),
+        ):
+            with pytest.raises(_SentinelAfterLanguageDetection):
+                search_space_preparation.python_func(
+                    test_data=test_data_art,
+                    extracted_text=extracted_art,
+                    search_space_prep_report=report_art,
+                    **kwargs,
+                )
+
+    def test_detects_german(self, tmp_path):
+        """LLM returns 'de' → chat.completions.create is called for detection."""
+        mocks, mock_client, td, ext, rep = self._setup_mocks(tmp_path, "de")
+        self._run(mocks, td, ext, rep)
+        mock_client.chat.completions.create.assert_called_once()
+
+    def test_english_returns_english_dict(self, tmp_path):
+        """LLM returns 'en' → detection completes without error (English is recorded)."""
+        mocks, _, td, ext, rep = self._setup_mocks(tmp_path, "en")
+        self._run(mocks, td, ext, rep)
+
+    def test_unsupported_code_returns_none(self, tmp_path):
+        """LLM returns unsupported code 'fi' → detection completes gracefully."""
+        mocks, _, td, ext, rep = self._setup_mocks(tmp_path, "fi")
+        self._run(mocks, td, ext, rep)
+
+    def test_llm_failure_returns_none(self, tmp_path):
+        """When LLM call fails, detection returns None gracefully."""
+        ogx_mod = _make_ogx_client_module()
+        mock_model = mock.MagicMock()
+        mock_model.identifier = "test-llm"
+        mock_model.model_type = "llm"
+        mock_models_response = mock.MagicMock()
+        mock_models_response.data = [mock_model]
+        mock_client = mock.MagicMock()
+        mock_client.models.list.return_value = mock_models_response
+        mock_client.chat.completions.create.side_effect = RuntimeError("LLM unavailable")
+        ogx_mod.OgxClient.return_value = mock_client
+
+        mocks, _, td, ext, rep = self._setup_mocks(tmp_path, "", ogx_mod=ogx_mod, mock_client=mock_client)
+        self._run(mocks, td, ext, rep)
+
+    def test_prefers_allowed_generation_models(self, tmp_path):
+        """When generation_models is provided, uses that model for detection."""
+        ogx_mod = _make_ogx_client_module()
+        mock_embed = mock.MagicMock()
+        mock_embed.identifier = "embed-model"
+        mock_embed.model_type = "embedding"
+        mock_llm = mock.MagicMock()
+        mock_llm.identifier = "preferred-llm"
+        mock_llm.model_type = "llm"
+        mock_models_response = mock.MagicMock()
+        mock_models_response.data = [mock_embed, mock_llm]
+        mock_choice = mock.MagicMock()
+        mock_choice.message.content = "de"
+        mock_chat_response = mock.MagicMock()
+        mock_chat_response.choices = [mock_choice]
+        mock_client = mock.MagicMock()
+        mock_client.models.list.return_value = mock_models_response
+        mock_client.chat.completions.create.return_value = mock_chat_response
+        ogx_mod.OgxClient.return_value = mock_client
+
+        mocks, _, td, ext, rep = self._setup_mocks(tmp_path, "de", ogx_mod=ogx_mod, mock_client=mock_client)
+        self._run(mocks, td, ext, rep, generation_models=["preferred-llm"])
+
+        call_kwargs = mock_client.chat.completions.create.call_args.kwargs
+        assert call_kwargs["model"] == "preferred-llm"
+
+
 class TestSSLFallbackSearchSpacePreparation:
     """Tests for SSL retry logic in _create_ogx_client."""
 
