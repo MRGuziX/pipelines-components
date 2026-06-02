@@ -586,7 +586,7 @@ class TestTimeseriesModelsTrainingUnitTests:
 
     def test_empty_eval_metric_raises(self, mock_artifacts):  # noqa: F811
         """eval_metric must be a non-empty string."""
-        models_artifact, notebooks, extra_train_path = mock_artifacts
+        models_artifact, extra_train_path = mock_artifacts
         test_data = mock.MagicMock()
         test_data.path = "/tmp/test.csv"
         with pytest.raises(TypeError, match="eval_metric must be a non-empty string"):
@@ -601,14 +601,13 @@ class TestTimeseriesModelsTrainingUnitTests:
                 pipeline_name="ts-pipeline-123",
                 run_id="run-123",
                 models_artifact=models_artifact,
-                notebooks=notebooks,
                 extra_train_data_path=extra_train_path,
                 eval_metric="",
             )
 
     def test_unsupported_eval_metric_raises(self, mock_artifacts):  # noqa: F811
         """eval_metric not in AVAILABLE_METRICS raises ValueError before training."""
-        models_artifact, notebooks, extra_train_path = mock_artifacts
+        models_artifact, extra_train_path = mock_artifacts
         test_data = mock.MagicMock()
         test_data.path = "/tmp/test.csv"
         with pytest.raises(ValueError, match="eval_metric must be one of"):
@@ -623,7 +622,6 @@ class TestTimeseriesModelsTrainingUnitTests:
                 pipeline_name="ts-pipeline-123",
                 run_id="run-123",
                 models_artifact=models_artifact,
-                notebooks=notebooks,
                 extra_train_data_path=extra_train_path,
                 eval_metric="BADMETRIC",
             )
@@ -641,7 +639,7 @@ class TestTimeseriesModelsTrainingUnitTests:
         mock_artifacts,  # noqa: F811
     ):
         """Custom eval_metric is passed to both TimeSeriesPredictor constructors, stored in model_config, and returned."""  # noqa: E501
-        models_artifact, notebooks, extra_train_path = mock_artifacts
+        models_artifact, extra_train_path = mock_artifacts
 
         mock_predictor = mock.MagicMock()
         mock_predictor.leaderboard.return_value = _mock_leaderboard(["DeepAR"])
@@ -671,7 +669,6 @@ class TestTimeseriesModelsTrainingUnitTests:
             pipeline_name="ts-pipeline-123",
             run_id="run-123",
             models_artifact=models_artifact,
-            notebooks=notebooks,
             extra_train_data_path=extra_train_path,
             eval_metric="WQL",
         )

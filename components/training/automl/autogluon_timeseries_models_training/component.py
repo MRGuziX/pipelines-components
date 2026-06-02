@@ -74,6 +74,8 @@ def autogluon_timeseries_models_training(
     import pandas as pd
     from autogluon.timeseries import TimeSeriesDataFrame, TimeSeriesPredictor
     from autogluon.timeseries.metrics import AVAILABLE_METRICS
+    from kfp_components.components.training.automl.shared.component_status import ComponentStatusTracker
+    from kfp_components.components.training.automl.shared.run_status import shared_automl_dir
 
     logger = logging.getLogger(__name__)
 
@@ -86,11 +88,6 @@ def autogluon_timeseries_models_training(
 
     status = ComponentStatusTracker(component_status.path, "autogluon_timeseries_models_training")
     with status:
-        # Set constants
-        DEFAULT_PRESETS = "fast_training"
-        DEFAULT_EVAL_METRIC = "MASE"
-        DEFAULT_TIME_LIMIT = 600  # 10 minutes
-
         TOP_N_MAX = 7
 
         # Input validation
@@ -104,6 +101,8 @@ def autogluon_timeseries_models_training(
         ):
             if not isinstance(value, str) or not value.strip():
                 raise TypeError(f"{param} must be a non-empty string.")
+        if eval_metric not in AVAILABLE_METRICS:
+            raise ValueError(f"eval_metric must be one of {sorted(AVAILABLE_METRICS)}; got {eval_metric!r}.")
         if not isinstance(top_n, int):
             raise TypeError("top_n must be an integer.")
         if top_n <= 0 or top_n > TOP_N_MAX:

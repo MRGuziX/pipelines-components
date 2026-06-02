@@ -179,8 +179,8 @@ def autogluon_models_training(
             )
         if test_data_df.empty:
             raise ValueError("Test CSV is empty. Ensure the data loader produced valid test data.")
-    if not eval_metric:
-        eval_metric = "r2" if task_type == "regression" else "accuracy"
+        if not eval_metric:
+            eval_metric = "r2" if task_type == "regression" else "accuracy"
 
         extra_train_df = None
         if extra_train_data_path.strip():
@@ -200,8 +200,6 @@ def autogluon_models_training(
             train_rows=len(train_data_df),
             test_rows=len(test_data_df),
         )
-
-        eval_metric = "r2" if task_type == "regression" else "accuracy"
 
         coerced_positive_class = _coerce_positive_class(positive_class)
         if coerced_positive_class is not None and task_type != "binary":

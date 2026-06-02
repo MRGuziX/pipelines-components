@@ -1312,7 +1312,7 @@ class TestAutogluonModelsTrainingUnitTests:
                 split_config=[],
             )
 
-    def test_rejects_whitespace_eval_metric(self, mock_notebooks):
+    def test_rejects_whitespace_eval_metric(self):
         """Whitespace-only eval_metric must raise TypeError, not be forwarded to AutoGluon."""
         with pytest.raises(TypeError, match="eval_metric must be a non-empty string"):
             autogluon_models_training.python_func(
@@ -1326,11 +1326,10 @@ class TestAutogluonModelsTrainingUnitTests:
                 run_id=RUN_ID,
                 sample_row=SAMPLE_ROW,
                 models_artifact=self._minimal_artifact(),
-                notebooks=mock_notebooks,
                 eval_metric="   ",
             )
 
-    def test_invalid_eval_metric_for_task_type_raises(self, mock_notebooks):
+    def test_invalid_eval_metric_for_task_type_raises(self):
         """eval_metric unknown for the given task_type raises ValueError before training."""
         with pytest.raises(ValueError, match="is not valid for task_type="):
             autogluon_models_training.python_func(
@@ -1344,7 +1343,6 @@ class TestAutogluonModelsTrainingUnitTests:
                 run_id=RUN_ID,
                 sample_row=SAMPLE_ROW,
                 models_artifact=self._minimal_artifact(),
-                notebooks=mock_notebooks,
                 eval_metric="accuracy",  # valid for binary/multiclass, not regression
             )
 
@@ -1352,9 +1350,7 @@ class TestAutogluonModelsTrainingUnitTests:
 
     @mock.patch("pandas.read_csv")
     @mock.patch("autogluon.tabular.TabularPredictor")
-    def test_eval_metric_explicit_forwarded_to_predictor(
-        self, mock_predictor_class, mock_read_csv, mock_notebooks, tmp_path
-    ):
+    def test_eval_metric_explicit_forwarded_to_predictor(self, mock_predictor_class, mock_read_csv, tmp_path):
         """Explicit eval_metric is passed through to TabularPredictor constructor and returned."""
         mock_predictor = mock.MagicMock()
         mock_predictor_clone = mock.MagicMock()
@@ -1387,7 +1383,6 @@ class TestAutogluonModelsTrainingUnitTests:
             run_id=RUN_ID,
             sample_row=SAMPLE_ROW,
             models_artifact=mock_models_artifact,
-            notebooks=mock_notebooks,
             eval_metric="r2",
         )
 
@@ -1402,9 +1397,7 @@ class TestAutogluonModelsTrainingUnitTests:
 
     @mock.patch("pandas.read_csv")
     @mock.patch("autogluon.tabular.TabularPredictor")
-    def test_eval_metric_none_regression_resolves_to_r2(
-        self, mock_predictor_class, mock_read_csv, mock_notebooks, tmp_path
-    ):
+    def test_eval_metric_none_regression_resolves_to_r2(self, mock_predictor_class, mock_read_csv, tmp_path):
         """eval_metric=None with regression resolves to 'r2'."""
         mock_predictor = mock.MagicMock()
         mock_predictor_clone = mock.MagicMock()
@@ -1437,7 +1430,6 @@ class TestAutogluonModelsTrainingUnitTests:
             run_id=RUN_ID,
             sample_row=SAMPLE_ROW,
             models_artifact=mock_models_artifact,
-            notebooks=mock_notebooks,
             eval_metric=None,
         )
 
@@ -1449,7 +1441,7 @@ class TestAutogluonModelsTrainingUnitTests:
     @mock.patch("pandas.read_csv")
     @mock.patch("autogluon.tabular.TabularPredictor")
     def test_eval_metric_none_binary_resolves_to_accuracy(
-        self, mock_predictor_class, mock_read_csv, mock_confusion_matrix, mock_notebooks, tmp_path
+        self, mock_predictor_class, mock_read_csv, mock_confusion_matrix, tmp_path
     ):
         """eval_metric=None with binary resolves to 'accuracy'."""
         mock_predictor = mock.MagicMock()
@@ -1484,7 +1476,6 @@ class TestAutogluonModelsTrainingUnitTests:
             run_id=RUN_ID,
             sample_row=SAMPLE_ROW,
             models_artifact=mock_models_artifact,
-            notebooks=mock_notebooks,
         )
 
         assert mock_predictor_class.call_args[1]["eval_metric"] == "accuracy"
@@ -1494,7 +1485,7 @@ class TestAutogluonModelsTrainingUnitTests:
     @mock.patch("pandas.read_csv")
     @mock.patch("autogluon.tabular.TabularPredictor")
     def test_eval_metric_none_multiclass_resolves_to_accuracy(
-        self, mock_predictor_class, mock_read_csv, mock_confusion_matrix, mock_notebooks, tmp_path
+        self, mock_predictor_class, mock_read_csv, mock_confusion_matrix, tmp_path
     ):
         """eval_metric=None with multiclass resolves to 'accuracy'."""
         mock_predictor = mock.MagicMock()
@@ -1529,7 +1520,6 @@ class TestAutogluonModelsTrainingUnitTests:
             run_id=RUN_ID,
             sample_row=SAMPLE_ROW,
             models_artifact=mock_models_artifact,
-            notebooks=mock_notebooks,
         )
 
         assert mock_predictor_class.call_args[1]["eval_metric"] == "accuracy"
