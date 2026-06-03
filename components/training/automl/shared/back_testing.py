@@ -66,7 +66,7 @@ def filter_finite_metrics(metrics: dict[str, Any]) -> dict[str, float]:
         if number is not None:
             # AutoGluon negates error metrics for "higher is better" convention.
             # Convert back to natural form: MAPE/RMSE/etc should be positive.
-            metric_normalized = (key or "").strip().lstrip("-").upper()
+            metric_normalized = _normalize_metric_name(key)
             if metric_normalized in _LOWER_IS_BETTER:
                 # This metric is naturally "lower is better", so AutoGluon negated it.
                 # Multiply by -1 to restore positive error values.
@@ -106,18 +106,29 @@ def serialize_date(value: Any) -> str:
 
 
 def _is_higher_better(eval_metric: str) -> bool:
-    metric = (eval_metric or "").strip()
-    if metric.startswith("-"):
+    original = (eval_metric or "").strip()
+    if original.startswith("-"):
         return True
-    return metric.upper() not in _LOWER_IS_BETTER
+    return _normalize_metric_name(original) not in _LOWER_IS_BETTER
 
 
 def _mean_prediction_column(predictions: pd.DataFrame) -> str:
+    """Select the point-forecast column from predictions.
+
+    Prefers 'mean' if available. If not, falls back to the first numeric column (likely a quantile),
+    which may introduce systematic bias in computed error metrics.
+    """
     if "mean" in predictions.columns:
         return "mean"
     numeric_cols = [c for c in predictions.columns if to_finite_float(c) is not None]
     if numeric_cols:
-        return str(numeric_cols[0])
+        col = str(numeric_cols[0])
+        logger.warning(
+            "No 'mean' column found in predictions; using quantile column %r as point forecast. "
+            "Computed MAPE/RMSE/MAE may be biased.",
+            col,
+        )
+        return col
     return str(predictions.columns[0])
 
 
@@ -167,11 +178,9 @@ def _holdout_frame(tsdf: pd.DataFrame, prediction_length: int) -> pd.DataFrame:
     if not isinstance(tsdf.index, pd.MultiIndex):
         return tsdf.tail(prediction_length)
 
-    parts = []
-    for item_id in _item_ids(tsdf):
-        item_df = tsdf.loc[item_id]
-        parts.append(item_df.tail(prediction_length))
-    return pd.concat(parts, keys=[i for i in _item_ids(tsdf)], names=tsdf.index.names)
+    item_ids = _item_ids(tsdf)
+    parts = [tsdf.loc[item_id].tail(prediction_length) for item_id in item_ids]
+    return pd.concat(parts, keys=item_ids, names=tsdf.index.names)
 
 
 def _window_date_bounds(targets_window: pd.DataFrame, prediction_length: int) -> tuple[str, str]:
@@ -260,11 +269,18 @@ def _item_window_metrics(
     target: str,
     prediction_length: int,
 ) -> dict[str, float]:
+    """Compute point-forecast error metrics for a single item/window.
+
+    Only rows with both valid actual and predicted values are included in the computation.
+    This prevents silent metric loss when some actual values are NaN/Inf.
+    """
     rows = _forecast_data_for_item(predictions, targets_window, item_id, target, prediction_length)
-    actual = np.array([r["actual"] for r in rows if "actual" in r], dtype=float)
-    predicted = np.array([r["predicted"] for r in rows], dtype=float)
-    if len(actual) != len(predicted) or len(actual) == 0:
+    # Build both arrays from the same filtered subset (rows with valid actuals)
+    paired = [r for r in rows if "actual" in r]
+    if not paired:
         return {}
+    actual = np.array([r["actual"] for r in paired], dtype=float)
+    predicted = np.array([r["predicted"] for r in paired], dtype=float)
     return {k: v for k, v in _point_errors(actual, predicted).items() if v is not None}
 
 
@@ -278,10 +294,6 @@ def _average_metrics(metric_dicts: list[dict[str, float]]) -> dict[str, float]:
         if values:
             averaged[key] = float(np.mean(values))
     return averaged
-
-
-def _normalize_metric_name(metric: str) -> str:
-    return (metric or "").strip().lstrip("-").upper()
 
 
 def _series_ranking_metric(eval_metric: str, series_averages: dict[Any, dict[str, float]]) -> str:
@@ -327,7 +339,8 @@ def _select_best_worst(
     def sort_key(item: tuple[Any, dict[str, float]]) -> float:
         value = item[1].get(ranking_metric)
         if value is None:
-            return float("inf") if not higher_is_better else float("-inf")
+            # Always sort missing values to the end (worst), regardless of metric direction
+            return float("inf")
         return -value if higher_is_better else value
 
     ordered = sorted(series_averages.items(), key=sort_key)
@@ -471,6 +484,7 @@ def build_back_testing_json(
     )
 
     return {
+        "schema_version": 1,
         "model_name": model_name_full,
         "prediction_length": prediction_length,
         "num_val_windows": len(predictions_windows),

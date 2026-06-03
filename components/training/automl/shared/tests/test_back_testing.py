@@ -125,6 +125,21 @@ class TestHoldoutHelpers:
         assert "lower_bound" not in rows[0]
         assert "upper_bound" not in rows[0]
 
+    def test_forecast_data_capped_at_max_points(self):
+        """Forecast rows never exceed MAX_FORECAST_POINTS_PER_WINDOW."""
+        from ..back_testing import MAX_FORECAST_POINTS_PER_WINDOW
+
+        n = MAX_FORECAST_POINTS_PER_WINDOW + 10
+        timestamps = [f"2025-01-{i:02d}" for i in range(1, min(n + 1, 32))]  # Cap at 31 for valid dates
+        if len(timestamps) < n:
+            # For larger n, use hours instead
+            timestamps = pd.date_range("2025-01-01", periods=n, freq="h").strftime("%Y-%m-%d %H:%M:%S").tolist()
+
+        targets = _make_panel(["A"], timestamps[:n], list(range(n)))
+        predictions = pd.DataFrame({"mean": list(range(n))}, index=targets.index)
+        rows = _forecast_data_for_item(predictions, targets, "A", "target", prediction_length=n)
+        assert len(rows) <= MAX_FORECAST_POINTS_PER_WINDOW
+
 
 class TestSeriesRanking:
     """Tests for series ranking metric selection."""
@@ -161,6 +176,33 @@ class TestSeriesAnalysis:
         assert analysis["num_series_evaluated"] == 0
         assert analysis["best_performer"] is None
         assert analysis["worst_performer"] is None
+
+    def test_item_window_metrics_with_nan_actuals(self):
+        """Metrics are computed on the valid subset even when some actuals are NaN."""
+        timestamps = ["2025-01-03", "2025-01-04"]
+        targets = _make_panel(["A"], timestamps, [100.0, float("nan")])
+        predictions = pd.DataFrame({"mean": [105.0, 180.0]}, index=targets.index)
+        metrics = _item_window_metrics(predictions, targets, "A", "target", prediction_length=2)
+        # Should compute MAPE on the 1 valid point (100 → 105), not silently return {}
+        assert "MAPE" in metrics
+        assert metrics["MAPE"] == pytest.approx(5.0)
+
+    def test_select_best_worst_missing_value_ranks_as_worst(self):
+        """A series with no metric value is ranked worst regardless of metric direction."""
+        from ..back_testing import _select_best_worst
+
+        # Test with lower-is-better metric (MAPE)
+        series_averages_lower = {"A": {"MAPE": 5.0}, "B": {}}  # B has no MAPE
+        best, worst = _select_best_worst(series_averages_lower, "MAPE")
+        assert best == "A"
+        assert worst == "B"
+
+        # Test with higher-is-better metric (would be R2, but we'll simulate)
+        # For our current metrics, we only have lower-is-better, but the logic should still work
+        series_averages_empty = {"A": {"MAPE": 5.0, "RMSE": 10.0}, "B": {"MAPE": 8.0}}  # B missing RMSE
+        best, worst = _select_best_worst(series_averages_empty, "RMSE")
+        assert best == "A"
+        assert worst == "B"  # Missing RMSE should rank as worst
 
 
 class TestBuildBackTestingJson:
@@ -259,7 +301,7 @@ class TestBuildBackTestingJson:
         assert payload["series_analysis"]["worst_performer"]["item_id"] == "bad"
         assert payload["series_analysis"]["best_performer"]["windows"][0]["forecast_data"]
         assert payload["series_analysis"]["best_performer"]["windows"][0]["forecast_data"][0]["timestamp"].endswith("Z")
-        assert "schema_version" not in payload
+        assert payload["schema_version"] == 1
         assert "ranking_metric" not in payload["series_analysis"]
 
     def test_ranks_by_point_metric_matching_eval_metric(self):

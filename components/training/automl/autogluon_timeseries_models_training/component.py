@@ -74,6 +74,10 @@ def autogluon_timeseries_models_training(
 
     logger = logging.getLogger(__name__)
 
+    from kfp_components.components.training.automl.shared.back_testing import (
+        build_back_testing_json,
+        filter_finite_metrics,
+    )
     from kfp_components.components.training.automl.shared.component_status import ComponentStatusTracker
     from kfp_components.components.training.automl.shared.run_status import shared_automl_dir
 
@@ -327,13 +331,9 @@ def autogluon_timeseries_models_training(
                     excluded_model_types=["Chronos", "Chronos2", "Toto"],
                 )
                 metrics = predictor_refit.evaluate(test_ts, metrics=list(AVAILABLE_METRICS.keys()))
-
-                metrics_dict = {}
-                for k, v in metrics.items():
-                    if hasattr(v, "item"):
-                        v = float(v)
-                    if isinstance(v, (int, float)) and math.isfinite(v):
-                        metrics_dict[k] = v
+                # Normalize AutoGluon's "higher-is-better" convention (negated error metrics)
+                # to match back_testing.json sign convention
+                metrics_dict = filter_finite_metrics(metrics)
 
                 if eval_metric not in metrics_dict:
                     raise ValueError(
@@ -345,8 +345,6 @@ def autogluon_timeseries_models_training(
                 metrics_path.mkdir(parents=True, exist_ok=True)
                 with (metrics_path / "metrics.json").open("w", encoding="utf-8") as f:
                     json.dump(metrics_dict, f, indent=2)
-
-                from kfp_components.components.training.automl.shared.back_testing import build_back_testing_json
 
                 back_testing_available = False
                 try:
