@@ -494,7 +494,7 @@ class TestTimeseriesModelsTrainingUnitTests:
         mock_refit_3.evaluate.return_value = {"MASE": 0.6, "MSE": 1.2}
 
         mock_predictor_cls.side_effect = [mock_predictor, mock_refit_1, mock_refit_2, mock_refit_3]
-        # from_data_frame is called for: train, test, and for successful models (DeepAR, AutoARIMA) in build_predict_sample_artifact
+        # from_data_frame: train, test, and successful refits (DeepAR, AutoARIMA) in build_predict_sample_artifact
         mock_ts_df_cls.from_data_frame.side_effect = [_mock_ts_df(), _mock_ts_df(), _mock_ts_df(), _mock_ts_df()]
         mock_ts_df_cls.from_path.return_value = _mock_ts_df()
         mock_ts_df_cls.return_value = _mock_ts_df()
