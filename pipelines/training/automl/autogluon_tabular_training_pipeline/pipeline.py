@@ -1,5 +1,3 @@
-from typing import Optional
-
 from kfp import dsl
 from kfp_components.components.data_processing.automl.tabular_data_loader import automl_data_loader
 from kfp_components.components.training.automl.autogluon_leaderboard_evaluation import leaderboard_evaluation
@@ -41,8 +39,9 @@ def autogluon_tabular_training_pipeline(
     label_column: str,
     task_type: str,
     top_n: int = 3,
-    positive_class: Optional[str] = None,
+    positive_class: str = "",
     eval_metric: str = "",
+    preset: str = "medium_quality",
 ):
     """AutoGluon Tabular Training Pipeline.
 
@@ -126,6 +125,7 @@ def autogluon_tabular_training_pipeline(
         top_n: Number of top models to select and refit (default: 3); positive integer from range [1, 10].
         positive_class: Optional label value for the positive class in binary classification. Defaults to the second unique class after sorting label values.
         eval_metric: Metric used for model ranking. Empty string (default) is resolved by the component to "r2" for regression and "accuracy" for binary and multiclass classification.
+        preset: AutoGluon quality tier (default: "medium_quality", 4 vCPU / 16 GiB). "good_quality" trains stronger models at higher resource cost (8 vCPU / 32 GiB).
 
     Returns:
         HTML artifact with leaderboard of refitted models ranked by task_type metric (e.g. accuracy, r2).
@@ -186,8 +186,10 @@ def autogluon_tabular_training_pipeline(
         optional=True,  # Mark as optional to not block the pipeline. If needed, error will be raised by component
     )
 
-    # Stage 1 + 2: Model selection and sequential refit of top N models
-    training_task = autogluon_models_training(
+    # Stage 1 + 2: Model selection and sequential refit of top N models.
+    # Resource limits differ by preset: good_quality needs more CPU/memory.
+    # TODO: when possible, the leaderboard evaluation task should be outside the if/else block.
+    _training_kwargs = dict(
         label_column=label_column,
         task_type=task_type,
         top_n=top_n,
@@ -201,20 +203,40 @@ def autogluon_tabular_training_pipeline(
         sampling_config=data_loader_task.outputs["sample_config"],
         split_config=data_loader_task.outputs["split_config"],
         extra_train_data_path=data_loader_task.outputs["extra_train_data_path"],
+        preset=preset,
         eval_metric=eval_metric,
     )
-    training_task.set_caching_options(False)
-    training_task.set_cpu_request("4").set_memory_request("16Gi").set_cpu_limit(MAX_CPUS).set_memory_limit(MAX_MEMORY)
+    with dsl.If(preset == "good_quality"):
+        training_task_gq = autogluon_models_training(**_training_kwargs)
+        training_task_gq.set_caching_options(False)
+        training_task_gq.set_cpu_request("8").set_memory_request("32Gi").set_cpu_limit(MAX_CPUS).set_memory_limit(
+            MAX_MEMORY
+        )
 
-    # Generate leaderboard
-    leaderboard_evaluation_task = leaderboard_evaluation(
-        models_artifact=training_task.outputs["models_artifact"],
-        eval_metric=training_task.outputs["eval_metric"],
-    )
-    leaderboard_evaluation_task.set_caching_options(False)
-    leaderboard_evaluation_task.set_cpu_request("1").set_memory_request("4Gi").set_cpu_limit(MAX_CPUS).set_memory_limit(
-        MAX_MEMORY
-    )
+        leaderboard_evaluation_task_gq = leaderboard_evaluation(
+            models_artifact=training_task_gq.outputs["models_artifact"],
+            eval_metric=training_task_gq.outputs["eval_metric"],
+        )
+        leaderboard_evaluation_task_gq.set_caching_options(False)
+        leaderboard_evaluation_task_gq.set_cpu_request("1").set_memory_request("4Gi").set_cpu_limit(
+            MAX_CPUS
+        ).set_memory_limit(MAX_MEMORY)
+
+    with dsl.Else():
+        training_task_mq = autogluon_models_training(**_training_kwargs)
+        training_task_mq.set_caching_options(False)
+        training_task_mq.set_cpu_request("4").set_memory_request("16Gi").set_cpu_limit(MAX_CPUS).set_memory_limit(
+            MAX_MEMORY
+        )
+
+        leaderboard_evaluation_task_mq = leaderboard_evaluation(
+            models_artifact=training_task_mq.outputs["models_artifact"],
+            eval_metric=training_task_mq.outputs["eval_metric"],
+        )
+        leaderboard_evaluation_task_mq.set_caching_options(False)
+        leaderboard_evaluation_task_mq.set_cpu_request("1").set_memory_request("4Gi").set_cpu_limit(
+            MAX_CPUS
+        ).set_memory_limit(MAX_MEMORY)
 
 
 if __name__ == "__main__":

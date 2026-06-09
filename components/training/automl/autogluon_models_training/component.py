@@ -22,7 +22,8 @@ def autogluon_models_training(
     sampling_config: Optional[dict] = None,
     split_config: Optional[dict] = None,
     extra_train_data_path: str = "",
-    positive_class: Optional[str] = None,
+    positive_class: str = "",
+    preset: str = "medium_quality",
     eval_metric: str = "",
 ) -> NamedTuple("outputs", eval_metric=str):
     """Train AutoGluon models, select the top N, and refit each on the full dataset.
@@ -58,10 +59,11 @@ def autogluon_models_training(
         sampling_config: Data sampling config stored in artifact metadata.
         split_config: Data split config stored in artifact metadata.
         extra_train_data_path: Optional path to extra training CSV passed to ``refit_full``.
-        positive_class: Optional label value for the positive class in **binary** classification
-            (``int`` or ``str``, e.g. ``"1"`` or ``"yes"``). Passed to ``TabularPredictor`` when set.
-            If ``None`` or empty, AutoGluon infers the positive class when ``fit`` runs (see note below).
+        positive_class: Label value for the positive class in **binary** classification
+            (e.g. ``"1"`` or ``"yes"``). Passed to ``TabularPredictor`` when set.
+            Empty string (default) lets AutoGluon infer the positive class when ``fit`` runs.
             Ignored for ``multiclass`` and ``regression``.
+        preset: AutoGluon quality tier. ``"medium_quality"`` (default, 30 min) or ``"good_quality"`` (60 min).
         eval_metric: Metric for model ranking (e.g. ``"r2"``, ``"accuracy"``). Defaults
             to ``"r2"`` for regression and ``"accuracy"`` otherwise.
 
@@ -92,6 +94,7 @@ def autogluon_models_training(
     from autogluon.tabular import TabularPredictor
 
     VALID_TASK_TYPES = {"binary", "multiclass", "regression"}
+    VALID_PRESETS = {"medium_quality", "good_quality"}
     TOP_N_MAX = 10
 
     # Input parameters validation
@@ -99,6 +102,8 @@ def autogluon_models_training(
         raise TypeError("label_column must be a non-empty string.")
     if task_type not in VALID_TASK_TYPES:
         raise ValueError(f"task_type must be one of {VALID_TASK_TYPES}; got {task_type!r}.")
+    if preset not in VALID_PRESETS:
+        raise ValueError(f"preset must be one of {VALID_PRESETS}; got {preset!r}.")
     if not train_data_path or not isinstance(train_data_path, str) or not train_data_path.strip():
         raise TypeError("train_data_path must be a non-empty string.")
     if not workspace_path or not isinstance(workspace_path, str) or not workspace_path.strip():
@@ -116,8 +121,7 @@ def autogluon_models_training(
         raise TypeError("sampling_config must be a dictionary or None.")
     if split_config is not None and not isinstance(split_config, dict):
         raise TypeError("split_config must be a dictionary or None.")
-    if positive_class is not None and not isinstance(positive_class, str):
-        raise TypeError("positive_class must be a string or None.")
+
     if eval_metric and not eval_metric.strip():
         raise TypeError("eval_metric must be a non-empty string (or empty string '' to use the task-type default).")
     if eval_metric and eval_metric not in METRICS.get(task_type, {}):
@@ -157,9 +161,6 @@ def autogluon_models_training(
     with status:
         # Stage: load_data
         status.record("load_data", "started")
-
-        DEFAULT_PRESET = "medium_quality"
-        DEFAULT_TIME_LIMIT = 30 * 60  # 30 minutes
 
         # 1. models selection stage
 
@@ -228,15 +229,39 @@ def autogluon_models_training(
             )
 
         status.record("model_selection", "started")
-        predictor = TabularPredictor(**predictor_init_kwargs).fit(
-            train_data=train_data_df,
-            num_stack_levels=1,
-            num_bag_folds=4,
-            use_bag_holdout=True,
-            holdout_frac=0.2,
-            time_limit=DEFAULT_TIME_LIMIT,
-            presets=DEFAULT_PRESET,
-        )
+        predictor = TabularPredictor(**predictor_init_kwargs)
+        if preset == "good_quality":
+            time_limit = 60 * 60  # 60 minutes - extend for good_quality
+            predictor = predictor.fit(
+                train_data=train_data_df,
+                presets=preset,
+                # Pipeline handles refit explicitly via refit_full(); disable AutoGluon's built-in refit
+                # to prevent double-refit and incorrect model selection.
+                refit_full=False,
+                set_best_to_refit_full=False,
+                # Required so refit_full() can access bag fold models after fit().
+                save_bag_folds=True,
+                time_limit=time_limit,
+            )
+        else:
+            import copy
+
+            from autogluon.tabular.configs.hyperparameter_configs import get_hyperparameter_config
+
+            time_limit = 30 * 60  # 30 minutes
+            RF_XT_MAX_DEPTH = 10
+            hyperparams = copy.deepcopy(get_hyperparameter_config("default"))
+            for model_type in ("RF", "XT"):
+                for config in hyperparams.get(model_type, []):
+                    config["max_depth"] = RF_XT_MAX_DEPTH
+            predictor = predictor.fit(
+                train_data=train_data_df,
+                use_bag_holdout=True,
+                holdout_frac=0.2,
+                time_limit=time_limit,
+                presets=preset,
+                hyperparameters=hyperparams,
+            )
 
         # Select top N models
         leaderboard = predictor.leaderboard(test_data_df)
@@ -251,9 +276,9 @@ def autogluon_models_training(
         )
 
         model_config = {
-            "preset": DEFAULT_PRESET,
+            "preset": preset,
             "eval_metric": eval_metric,
-            "time_limit": DEFAULT_TIME_LIMIT,
+            "time_limit": time_limit,
         }
 
         def retrieve_pipeline_name(name: str) -> str:

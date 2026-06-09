@@ -45,6 +45,7 @@ def autogluon_timeseries_training_pipeline(
     prediction_length: int = 1,
     top_n: int = 3,
     eval_metric: str = "MASE",
+    preset: str = "fast_training",
 ):
     """AutoGluon time series training pipeline.
 
@@ -105,6 +106,8 @@ def autogluon_timeseries_training_pipeline(
         top_n: Number of top models to select for the leaderboard and output (default: 3).
         eval_metric: Metric for model ranking in acronym (e.g. ``"MASE"``, ``"WQL"``) or
             snake_case form. Defaults to ``"MASE"``.
+        preset: AutoGluon quality tier (default: ``"fast_training"``). ``"medium_quality"``
+            trains stronger models at higher resource cost (8 vCPU / 32 GiB).
 
     Returns:
         This pipeline wires task outputs between components; compiled runs expose the combined models artifact
@@ -167,8 +170,10 @@ def autogluon_timeseries_training_pipeline(
         optional=True,
     )
 
-    # Stage 2: Combined model generation + full refit
-    training_task = autogluon_timeseries_models_training(
+    # Stage 2: Combined model generation + full refit.
+    # Resource limits differ by preset: medium_quality needs more CPU/memory.
+    # TODO: when possible, the leaderboard evaluation task should be outside the if/else block.
+    _training_kwargs = dict(
         target=target,
         id_column=id_column,
         timestamp_column=timestamp_column,
@@ -184,18 +189,40 @@ def autogluon_timeseries_training_pipeline(
         sampling_config=data_loader_task.outputs["sample_config"],
         split_config=data_loader_task.outputs["split_config"],
         extra_train_data_path=data_loader_task.outputs["extra_train_data_path"],
+        preset=preset,
         eval_metric=eval_metric,
     )
-    training_task.set_caching_options(False)
-    training_task.set_cpu_request("4").set_memory_request("16Gi").set_cpu_limit(MAX_CPUS).set_memory_limit(MAX_MEMORY)
+    with dsl.If(preset == "medium_quality"):
+        training_task_mq = autogluon_timeseries_models_training(**_training_kwargs)
+        training_task_mq.set_caching_options(False)
+        training_task_mq.set_cpu_request("8").set_memory_request("32Gi").set_cpu_limit(MAX_CPUS).set_memory_limit(
+            MAX_MEMORY
+        )
 
-    # Stage 3: Common leaderboard evaluation
-    leaderboard_task = leaderboard_evaluation(
-        models_artifact=training_task.outputs["models_artifact"],
-        eval_metric=training_task.outputs["eval_metric"],
-    )
-    leaderboard_task.set_caching_options(False)
-    leaderboard_task.set_cpu_request("1").set_memory_request("4Gi").set_cpu_limit(MAX_CPUS).set_memory_limit(MAX_MEMORY)
+        leaderboard_task_mq = leaderboard_evaluation(
+            models_artifact=training_task_mq.outputs["models_artifact"],
+            eval_metric=training_task_mq.outputs["eval_metric"],
+        )
+        leaderboard_task_mq.set_caching_options(False)
+        leaderboard_task_mq.set_cpu_request("1").set_memory_request("4Gi").set_cpu_limit(MAX_CPUS).set_memory_limit(
+            MAX_MEMORY
+        )
+
+    with dsl.Else():
+        training_task_ft = autogluon_timeseries_models_training(**_training_kwargs)
+        training_task_ft.set_caching_options(False)
+        training_task_ft.set_cpu_request("4").set_memory_request("16Gi").set_cpu_limit(MAX_CPUS).set_memory_limit(
+            MAX_MEMORY
+        )
+
+        leaderboard_task_ft = leaderboard_evaluation(
+            models_artifact=training_task_ft.outputs["models_artifact"],
+            eval_metric=training_task_ft.outputs["eval_metric"],
+        )
+        leaderboard_task_ft.set_caching_options(False)
+        leaderboard_task_ft.set_cpu_request("1").set_memory_request("4Gi").set_cpu_limit(MAX_CPUS).set_memory_limit(
+            MAX_MEMORY
+        )
 
 
 if __name__ == "__main__":

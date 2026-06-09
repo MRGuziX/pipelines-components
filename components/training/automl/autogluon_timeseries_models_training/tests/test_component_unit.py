@@ -330,6 +330,27 @@ class TestTimeseriesModelsTrainingUnitTests:
                 prediction_length=0,
             )
 
+    def test_rejects_invalid_preset(self, mock_artifacts):
+        """Preset must be one of the valid AutoGluon quality tiers."""
+        models_artifact, extra_train_path = mock_artifacts
+        test_data = mock.MagicMock()
+        test_data.path = "/tmp/test.csv"
+        with pytest.raises(ValueError, match="preset must be one of"):
+            autogluon_timeseries_models_training.python_func(
+                target="sales",
+                id_column="item_id",
+                timestamp_column="timestamp",
+                train_data_path="/tmp/train.csv",
+                test_data=test_data,
+                top_n=1,
+                workspace_path="/tmp/workspace",
+                pipeline_name="ts-pipeline-123",
+                run_id="run-123",
+                models_artifact=models_artifact,
+                extra_train_data_path=extra_train_path,
+                preset="best_quality",
+            )
+
     @mock.patch("pandas.read_csv")
     @mock.patch("autogluon.timeseries.TimeSeriesDataFrame")
     @mock.patch("autogluon.timeseries.TimeSeriesPredictor")
