@@ -72,7 +72,7 @@ prediction_length=14, top_n=3, )
   - pipeline
   - automl
   - autogluon-timeseries-training-pipeline
-- **Last Verified**: 2026-05-07 12:00:00+00:00
+- **Last Verified**: 2026-06-10 12:00:00+00:00
 - **Owners**:
   - No Parent Owners: Yes
   - Approvers:

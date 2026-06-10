@@ -76,7 +76,7 @@ The pipeline leverages AutoGluon's unique ensembling strategy that combines mult
   - pipeline
   - automl
   - autogluon-tabular-training-pipeline
-- **Last Verified**: 2026-05-20 12:00:00+00:00
+- **Last Verified**: 2026-06-10 12:00:00+00:00
 - **Owners**:
   - No Parent Owners: Yes
   - Approvers:
