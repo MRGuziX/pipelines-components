@@ -301,7 +301,7 @@ class TestAutogluonModelsTrainingUnitTests:
         fit_call = mock_predictor_class.return_value.fit.call_args
         assert fit_call[1]["train_data"] is mock_train_df
         assert fit_call[1]["presets"] == "good_quality"
-        assert fit_call[1]["time_limit"] == 3600
+        assert fit_call[1]["time_limit"] == 45 * 60
         assert fit_call[1]["refit_full"] is False
         assert fit_call[1]["set_best_to_refit_full"] is False
         assert fit_call[1]["save_bag_folds"] is True
@@ -392,8 +392,8 @@ class TestAutogluonModelsTrainingUnitTests:
 
     @mock.patch("pandas.read_csv")
     @mock.patch("autogluon.tabular.TabularPredictor")
-    def test_good_quality_preset_fit_args(self, mock_predictor_class, mock_read_csv, tmp_path):
-        """good_quality preset uses 1-hour time limit and the same fit args as all presets."""
+    def test_speed_preset_fit_args(self, mock_predictor_class, mock_read_csv, tmp_path):
+        """Speed preset uses 1-hour time limit and the original fit args."""
         mock_predictor = mock.MagicMock()
         mock_predictor_clone = mock.MagicMock()
         mock_predictor_class.return_value.fit.return_value = mock_predictor
@@ -428,20 +428,20 @@ class TestAutogluonModelsTrainingUnitTests:
             run_id=RUN_ID,
             sample_row=SAMPLE_ROW,
             models_artifact=mock_models_artifact,
-            preset="good_quality",
+            preset="speed",
         )
 
         fit_call = mock_predictor_class.return_value.fit.call_args
-        assert fit_call[1]["presets"] == "good_quality"
-        assert fit_call[1]["time_limit"] == 3600
+        assert fit_call[1]["presets"] == "good_quality"  # AG internal name
+        assert fit_call[1]["time_limit"] == 45 * 60
         assert fit_call[1]["refit_full"] is False
         assert fit_call[1]["set_best_to_refit_full"] is False
         assert fit_call[1]["save_bag_folds"] is True
         assert "hyperparameters" not in fit_call[1]
 
         context = mock_models_artifact.metadata["context"]
-        assert context["model_config"]["preset"] == "good_quality"
-        assert context["model_config"]["time_limit"] == 3600
+        assert context["model_config"]["preset"] == "speed"
+        assert context["model_config"]["time_limit"] == 45 * 60
 
     @mock.patch("pandas.read_csv")
     @mock.patch("autogluon.tabular.TabularPredictor")

@@ -62,7 +62,7 @@ class TestAutogluonTimeseriesTrainingPipelineUnitTests:
         assert inputs["prediction_length"].default == 1
         assert inputs["top_n"].default == 3
         assert inputs["known_covariates_names"].default is None
-        assert inputs["preset"].default == "fast_training"
+        assert inputs["preset"].default == "speed"
         assert inputs["eval_metric"].default == "MASE"
 
     def test_compiled_pipeline_has_expected_inputs(self):

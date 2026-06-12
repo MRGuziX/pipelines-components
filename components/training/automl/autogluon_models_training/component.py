@@ -23,7 +23,7 @@ def autogluon_models_training(
     split_config: Optional[dict] = None,
     extra_train_data_path: str = "",
     positive_class: str = "",
-    preset: str = "good_quality",
+    preset: str = "speed",
     eval_metric: str = "",
 ) -> NamedTuple("outputs", eval_metric=str):
     """Train AutoGluon models, select the top N, and refit each on the full dataset.
@@ -63,8 +63,8 @@ def autogluon_models_training(
             (e.g. ``"1"`` or ``"yes"``). Passed to ``TabularPredictor`` when set.
             Empty string (default) lets AutoGluon infer the positive class when ``fit`` runs.
             Ignored for ``multiclass`` and ``regression``.
-        preset: AutoGluon quality tier. ``"good_quality"`` (default, 1-hour time limit) or
-            ``"high_quality"`` (2-hour time limit).
+        preset: Training quality tier. ``"speed"`` (default, 45-min time limit) or
+            ``"balanced"`` (90-min time limit).
         eval_metric: Metric for model ranking (e.g. ``"r2"``, ``"accuracy"``). Defaults
             to ``"r2"`` for regression and ``"accuracy"`` otherwise.
 
@@ -95,8 +95,9 @@ def autogluon_models_training(
     from autogluon.tabular import TabularPredictor
 
     VALID_TASK_TYPES = {"binary", "multiclass", "regression"}
-    VALID_PRESETS = {"good_quality", "high_quality"}
-    PRESET_TIME_LIMITS = {"good_quality": 60 * 60, "high_quality": 2 * 60 * 60}
+    VALID_PRESETS = {"speed", "balanced"}
+    PRESET_TIME_LIMITS = {"speed": 45 * 60, "balanced": 90 * 60}
+    PRESET_AG_NAMES = {"speed": "good_quality", "balanced": "high_quality"}
     TOP_N_MAX = 10
 
     # Input parameters validation
@@ -234,7 +235,7 @@ def autogluon_models_training(
         time_limit = PRESET_TIME_LIMITS[preset]
         predictor = TabularPredictor(**predictor_init_kwargs).fit(
             train_data=train_data_df,
-            presets=preset,
+            presets=PRESET_AG_NAMES[preset],
             # Pipeline handles refit explicitly via refit_full(); disable AutoGluon's built-in refit
             # to prevent double-refit and incorrect model selection.
             refit_full=False,

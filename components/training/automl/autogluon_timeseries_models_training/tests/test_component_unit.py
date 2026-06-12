@@ -163,7 +163,7 @@ class TestTimeseriesModelsTrainingUnitTests:
         assert result.eval_metric == "MASE"
         assert result.predictor_path == "/tmp/workspace/timeseries_predictor"
         assert result.model_config["prediction_length"] == 24
-        assert result.model_config["presets"] == "fast_training"
+        assert result.model_config["presets"] == "speed"
         assert result.model_config["time_limit"] == 600
         assert result.model_config["known_covariates_names"] == []
         assert result.model_config["num_models_trained"] == 3

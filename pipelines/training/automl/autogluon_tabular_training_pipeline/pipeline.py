@@ -41,7 +41,7 @@ def autogluon_tabular_training_pipeline(
     top_n: int = 3,
     positive_class: str = "",
     eval_metric: str = "",
-    preset: str = "good_quality",
+    preset: str = "speed",
 ):
     """AutoGluon Tabular Training Pipeline.
 
@@ -125,7 +125,7 @@ def autogluon_tabular_training_pipeline(
         top_n: Number of top models to select and refit (default: 3); positive integer from range [1, 10].
         positive_class: Optional label value for the positive class in binary classification. Defaults to the second unique class after sorting label values.
         eval_metric: Metric used for model ranking. Empty string (default) is resolved by the component to "r2" for regression and "accuracy" for binary and multiclass classification.
-        preset: AutoGluon quality tier. "good_quality" (default, 1 hour time limit) or "high_quality" (90 min time limit).
+        preset: Training quality tier. "speed" (default, 45-min time limit, 8 vCPU / 32 GiB) or "balanced" (90-min time limit, 16 vCPU / 64 GiB).
 
     Returns:
         HTML artifact with leaderboard of refitted models ranked by task_type metric (e.g. accuracy, r2).
@@ -187,7 +187,7 @@ def autogluon_tabular_training_pipeline(
     )
 
     # Stage 1 + 2: Model selection and sequential refit of top N models.
-    # Resource limits differ by preset: good_quality needs more CPU/memory.
+    # Resource limits differ by preset: balanced needs more CPU/memory than speed.
     # TODO: when possible, the leaderboard evaluation task should be outside the if/else block.
     _training_kwargs = dict(
         label_column=label_column,
@@ -206,35 +206,35 @@ def autogluon_tabular_training_pipeline(
         preset=preset,
         eval_metric=eval_metric,
     )
-    with dsl.If(preset == "good_quality"):
-        training_task_gq = autogluon_models_training(**_training_kwargs)
-        training_task_gq.set_caching_options(False)
-        training_task_gq.set_cpu_request("8").set_memory_request("32Gi").set_cpu_limit(MAX_CPUS).set_memory_limit(
+    with dsl.If(preset == "speed"):
+        training_task_sp = autogluon_models_training(**_training_kwargs)
+        training_task_sp.set_caching_options(False)
+        training_task_sp.set_cpu_request("8").set_memory_request("32Gi").set_cpu_limit(MAX_CPUS).set_memory_limit(
             MAX_MEMORY
         )
 
-        leaderboard_evaluation_task_gq = leaderboard_evaluation(
-            models_artifact=training_task_gq.outputs["models_artifact"],
-            eval_metric=training_task_gq.outputs["eval_metric"],
+        leaderboard_evaluation_task_sp = leaderboard_evaluation(
+            models_artifact=training_task_sp.outputs["models_artifact"],
+            eval_metric=training_task_sp.outputs["eval_metric"],
         )
-        leaderboard_evaluation_task_gq.set_caching_options(False)
-        leaderboard_evaluation_task_gq.set_cpu_request("1").set_memory_request("4Gi").set_cpu_limit(
+        leaderboard_evaluation_task_sp.set_caching_options(False)
+        leaderboard_evaluation_task_sp.set_cpu_request("1").set_memory_request("4Gi").set_cpu_limit(
             MAX_CPUS
         ).set_memory_limit(MAX_MEMORY)
 
     with dsl.Else():
-        training_task_mq = autogluon_models_training(**_training_kwargs)
-        training_task_mq.set_caching_options(False)
-        training_task_mq.set_cpu_request("4").set_memory_request("16Gi").set_cpu_limit(MAX_CPUS).set_memory_limit(
+        training_task_bl = autogluon_models_training(**_training_kwargs)
+        training_task_bl.set_caching_options(False)
+        training_task_bl.set_cpu_request("16").set_memory_request("64Gi").set_cpu_limit(MAX_CPUS).set_memory_limit(
             MAX_MEMORY
         )
 
-        leaderboard_evaluation_task_mq = leaderboard_evaluation(
-            models_artifact=training_task_mq.outputs["models_artifact"],
-            eval_metric=training_task_mq.outputs["eval_metric"],
+        leaderboard_evaluation_task_bl = leaderboard_evaluation(
+            models_artifact=training_task_bl.outputs["models_artifact"],
+            eval_metric=training_task_bl.outputs["eval_metric"],
         )
-        leaderboard_evaluation_task_mq.set_caching_options(False)
-        leaderboard_evaluation_task_mq.set_cpu_request("1").set_memory_request("4Gi").set_cpu_limit(
+        leaderboard_evaluation_task_bl.set_caching_options(False)
+        leaderboard_evaluation_task_bl.set_cpu_request("1").set_memory_request("4Gi").set_cpu_limit(
             MAX_CPUS
         ).set_memory_limit(MAX_MEMORY)
 

@@ -25,7 +25,7 @@ def autogluon_timeseries_models_training(
     split_config: Optional[dict] = None,
     prediction_length: int = 1,
     known_covariates_names: Optional[List[str]] = None,
-    preset: str = "fast_training",
+    preset: str = "speed",
     eval_metric: str = "MASE",
 ) -> NamedTuple(
     "outputs",
@@ -62,7 +62,7 @@ def autogluon_timeseries_models_training(
         prediction_length: Forecast horizon (number of timesteps).
         known_covariates_names: Optional list of known covariate column names.
         component_status: Output artifact containing stage-level progress tracking for this component.
-        preset: AutoGluon quality tier. ``"fast_training"`` (default, 10 min) or ``"medium_quality"`` (60 min).
+        preset: Training quality tier. ``"speed"`` (default, 10 min) or ``"balanced"`` (60 min).
         eval_metric: Metric for model ranking (e.g. ``"MASE"``, ``"WQL"``). Defaults to ``"MASE"``.
 
     Returns:
@@ -89,8 +89,9 @@ def autogluon_timeseries_models_training(
     status = ComponentStatusTracker(component_status.path, "autogluon_timeseries_models_training")
     with status:
         TOP_N_MAX = 7
-        VALID_PRESETS = {"fast_training", "medium_quality"}
-        time_limit = 60 * 60 if preset == "medium_quality" else 10 * 60
+        VALID_PRESETS = {"speed", "balanced"}
+        PRESET_AG_NAMES = {"speed": "fast_training", "balanced": "medium_quality"}
+        PRESET_TIME_LIMITS = {"speed": 10 * 60, "balanced": 60 * 60}
 
         # Input validation
         if preset not in VALID_PRESETS:
@@ -141,6 +142,7 @@ def autogluon_timeseries_models_training(
             raise TypeError("split_config must be a dictionary or None.")
         sampling_config = sampling_config or {}
         split_config = split_config or {}
+        time_limit = PRESET_TIME_LIMITS[preset]
 
         status.record("load_data", "started")
         train_df = pd.read_csv(train_data_path)
@@ -194,7 +196,7 @@ def autogluon_timeseries_models_training(
         try:
             predictor.fit(
                 train_data=train_ts,
-                presets=preset,
+                presets=PRESET_AG_NAMES[preset],
                 time_limit=time_limit,
                 # exclude deep learning models pretrained on large time series datasets
                 excluded_model_types=["Chronos", "Toto", "Chronos2"],
