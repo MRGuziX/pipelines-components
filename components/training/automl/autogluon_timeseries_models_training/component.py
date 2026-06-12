@@ -62,7 +62,8 @@ def autogluon_timeseries_models_training(
         prediction_length: Forecast horizon (number of timesteps).
         known_covariates_names: Optional list of known covariate column names.
         component_status: Output artifact containing stage-level progress tracking for this component.
-        preset: Training quality tier. ``"speed"`` (default, 10 min) or ``"balanced"`` (60 min).
+        preset: Training quality tier. ``"speed"`` (default) or ``"balanced"``
+            (may run more than 2x longer).
         eval_metric: Metric for model ranking (e.g. ``"MASE"``, ``"WQL"``). Defaults to ``"MASE"``.
 
     Returns:

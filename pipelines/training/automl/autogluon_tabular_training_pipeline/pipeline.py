@@ -125,7 +125,7 @@ def autogluon_tabular_training_pipeline(
         top_n: Number of top models to select and refit (default: 3); positive integer from range [1, 10].
         positive_class: Optional label value for the positive class in binary classification. Defaults to the second unique class after sorting label values.
         eval_metric: Metric used for model ranking. Empty string (default) is resolved by the component to "r2" for regression and "accuracy" for binary and multiclass classification.
-        preset: Training quality tier. "speed" (default, 45-min time limit, 8 vCPU / 32 GiB) or "balanced" (90-min time limit, 16 vCPU / 64 GiB).
+        preset: Training quality tier. "speed" (default, 8 vCPU / 32 GiB) or "balanced" (may run more than 2x longer, 16 vCPU / 64 GiB).
 
     Returns:
         HTML artifact with leaderboard of refitted models ranked by task_type metric (e.g. accuracy, r2).

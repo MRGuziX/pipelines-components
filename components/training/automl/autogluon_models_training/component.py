@@ -63,8 +63,8 @@ def autogluon_models_training(
             (e.g. ``"1"`` or ``"yes"``). Passed to ``TabularPredictor`` when set.
             Empty string (default) lets AutoGluon infer the positive class when ``fit`` runs.
             Ignored for ``multiclass`` and ``regression``.
-        preset: Training quality tier. ``"speed"`` (default, 45-min time limit) or
-            ``"balanced"`` (90-min time limit).
+        preset: Training quality tier. ``"speed"`` (default) or ``"balanced"``
+            (may run more than 2x longer).
         eval_metric: Metric for model ranking (e.g. ``"r2"``, ``"accuracy"``). Defaults
             to ``"r2"`` for regression and ``"accuracy"`` otherwise.
 
