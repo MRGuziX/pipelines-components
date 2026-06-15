@@ -130,6 +130,7 @@ def _skopeo_copy(ref: str, dest: str, auth: Optional[str], log: logging.Logger) 
         if af:
             os.unlink(af)
 
+
 def _extract_tar(img_dir: str, out: str, log: logging.Logger) -> List[str]:
     """Extract model files from OCI image layers.
 

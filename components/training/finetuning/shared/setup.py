@@ -3,7 +3,6 @@
 import logging
 import os
 import sys
-import tempfile
 from typing import Dict, Optional
 
 
