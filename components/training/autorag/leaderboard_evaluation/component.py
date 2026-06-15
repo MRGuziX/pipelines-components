@@ -327,36 +327,16 @@ def leaderboard_evaluation(
 
     rag_patterns_dir = Path(rag_patterns)
 
-    import sys
+    import importlib.util
 
-    # Validate embedded artifact before use
-    if embedded_artifact is None:
-        raise ValueError(
-            "embedded_artifact is required for component status tracking. "
-            "This parameter is automatically injected by KFP when using embedded_artifact_path decorator."
-        )
-
-    if not hasattr(embedded_artifact, "path") or not embedded_artifact.path:
-        raise ValueError("embedded_artifact.path is missing or empty")
-
-    # Resolve import root (handle both file and directory paths)
-    embedded_path = Path(embedded_artifact.path)
-    if embedded_path.is_file():
-        # Path points to component_status.py, use parent directory
-        import_root = embedded_path.parent
-    elif embedded_path.is_dir():
-        # Path is already a directory
-        import_root = embedded_path
-    else:
-        raise ValueError(f"Invalid embedded_artifact.path: {embedded_path}")
-
-    sys.path.insert(0, str(import_root))
-    try:
-        from component_status import component_status_tracker
-    finally:
-        sys.path.pop(0)
-
-    status = component_status_tracker(component_status, "leaderboard_evaluation")
+    _embedded_path = Path(embedded_artifact.path)
+    _module_path = _embedded_path if _embedded_path.is_file() else _embedded_path / "component_status.py"
+    _spec = importlib.util.spec_from_file_location("_autorag_component_status", _module_path)
+    if _spec is None or _spec.loader is None:
+        raise ValueError(f"Cannot load embedded module from {_module_path}")
+    _status_module = importlib.util.module_from_spec(_spec)
+    _spec.loader.exec_module(_status_module)
+    status = _status_module.bootstrap_status_tracker(embedded_artifact, component_status, "leaderboard_evaluation")
     with status:
         with status.stage("build_leaderboard"):
             if not rag_patterns_dir.is_dir():

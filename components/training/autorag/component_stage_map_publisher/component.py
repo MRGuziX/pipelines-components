@@ -49,7 +49,7 @@ def publish_component_stage_map(
         raise ValueError("pipeline_id must be a non-empty string")
     if not isinstance(run_id, str) or not run_id.strip():
         raise ValueError("run_id must be a non-empty string")
-    if "/" in pipeline_id or "\\" in pipeline_id or ".." in pipeline_id:
+    if "/" in pipeline_id or "\\" in pipeline_id:
         raise ValueError(f"Invalid pipeline_id '{pipeline_id}': must be a simple identifier without path separators")
 
     templates_root = Path(embedded_artifact.path) if embedded_artifact is not None else None
@@ -62,7 +62,6 @@ def publish_component_stage_map(
 
     with manifest_path.open("r", encoding="utf-8") as f:
         stage_map = json.load(f)
-    stage_map.pop("initial_document", None)
     if not stage_map.get("components"):
         raise FileNotFoundError(
             f"Component stage map not found or empty for pipeline_id='{pipeline_id}'. "
@@ -79,11 +78,10 @@ def publish_component_stage_map(
     with output_file.open("w", encoding="utf-8") as f:
         json.dump(stage_map, f, indent=2)
 
+    component_count = len(stage_map.get("components", []))
     component_stage_map.metadata["display_name"] = "Component Stage Map"
     component_stage_map.metadata["pipeline_id"] = pipeline_id
-    component_stage_map.metadata["component_count"] = len(stage_map.get("components", []))
-
-    component_count = len(stage_map.get("components", []))
+    component_stage_map.metadata["component_count"] = component_count
     stage_count = sum(len(c.get("stages", [])) for c in stage_map.get("components", []))
     print(f"Published component stage map for pipeline_id='{pipeline_id}':")
     print(f"  - Components: {component_count}")

@@ -454,6 +454,43 @@ class TestSSLFallbackRagTemplatesOptimization:
             "OGX_CLIENT_API_KEY": "test-api-key",
         },
     )
+    def test_ogx_client_ssl_substring_in_message_does_not_retry(self, tmp_path):
+        """Messages mentioning 'SSL' without an SSL failure do not trigger verify=False retry."""
+        mocks = _make_all_mocks()
+
+        ogx_mod = _make_ogx_client_module()
+        OGXAPIConnectionError = ogx_mod.APIConnectionError
+        err = OGXAPIConnectionError("Failed to initialize SSL context for unrelated reason")
+        err.__cause__ = TimeoutError("timed out")
+
+        mock_ogx_client = mock.MagicMock()
+        mock_ogx_client.models.list.side_effect = err
+        ogx_mod.OgxClient.return_value = mock_ogx_client
+        mocks["ogx_client"] = ogx_mod
+
+        extracted_text, test_data, search_space_report = self._make_paths(tmp_path)
+        rag_patterns = self._make_output_artifacts()
+
+        with mock.patch.dict(sys.modules, mocks):
+            with pytest.raises(OGXAPIConnectionError):
+                rag_templates_optimization.python_func(
+                    extracted_text=extracted_text,
+                    test_data=test_data,
+                    search_space_prep_report=search_space_report,
+                    rag_patterns=rag_patterns,
+                    test_data_key="small-dataset/benchmark.json",
+                    vector_io_provider_id="milvus",
+                )
+
+        assert ogx_mod.OgxClient.call_count == 1, "Non-SSL errors must not retry with verify=False"
+
+    @mock.patch.dict(
+        "os.environ",
+        {
+            "OGX_CLIENT_BASE_URL": "https://ogx.example.com",
+            "OGX_CLIENT_API_KEY": "test-api-key",
+        },
+    )
     def test_ogx_client_non_ssl_error_is_reraised(self, tmp_path):
         """Non-SSL error from models.list() propagates without retry."""
         mocks = _make_all_mocks()
@@ -695,3 +732,57 @@ class TestRunOptimizationStatus:
             "evaluation",
         ]
         assert component_status.metadata["display_name"] == "RAG Templates Optimization Status"
+
+    @mock.patch.dict(
+        "os.environ",
+        {
+            "OGX_CLIENT_BASE_URL": "https://ogx.example.com",
+            "OGX_CLIENT_API_KEY": "test-api-key",
+        },
+    )
+    def test_run_optimization_search_failure_marks_stage_failed(self, tmp_path):
+        """run_optimization stage is marked failed when rag_exp.search() raises."""
+        mocks = _make_all_mocks()
+        ogx_mod = _make_ogx_client_module()
+        mock_ogx = mock.MagicMock()
+        mock_ogx.models.list.return_value = []
+        ogx_mod.OgxClient.return_value = mock_ogx
+        mocks["ogx_client"] = ogx_mod
+
+        mock_exp = mock.MagicMock()
+        mock_exp.search.side_effect = RuntimeError("search failed")
+        mocks["ai4rag.core.experiment.experiment"].AI4RAGExperiment.return_value = mock_exp
+
+        search_space_report = tmp_path / "report.yml"
+        search_space_report.write_text("{}")
+        test_data = tmp_path / "test_data.json"
+        test_data.write_text("[]")
+        extracted_text = tmp_path / "extracted_text"
+        extracted_text.mkdir()
+
+        rag_patterns_dir = tmp_path / "rag_patterns"
+        rag_patterns_dir.mkdir()
+        rag_patterns = mock.MagicMock()
+        rag_patterns.path = str(rag_patterns_dir)
+
+        component_status = mock.MagicMock()
+        component_status.path = str(tmp_path / "component_status_out")
+        component_status.metadata = {}
+
+        with mock.patch.dict(sys.modules, mocks):
+            with pytest.raises(RuntimeError, match="search failed"):
+                rag_templates_optimization.python_func(
+                    extracted_text=str(extracted_text),
+                    test_data=str(test_data),
+                    search_space_prep_report=str(search_space_report),
+                    rag_patterns=rag_patterns,
+                    component_status=component_status,
+                    test_data_key="small-dataset/benchmark.json",
+                    vector_io_provider_id="milvus",
+                    optimization_settings={"metric": "faithfulness", "max_number_of_rag_patterns": 8},
+                )
+
+        status_data = json.loads((tmp_path / "component_status_out" / "component_status.json").read_text())
+        run_stage = next(stage for stage in status_data["stages"] if stage["id"] == "run_optimization")
+        assert run_stage["status"] == "failed"
+        assert "search failed" in run_stage["error"]

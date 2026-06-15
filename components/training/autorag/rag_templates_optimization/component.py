@@ -103,8 +103,9 @@ def rag_templates_optimization(
         current: BaseException | None = exc
         while current is not None and id(current) not in seen:
             seen.add(id(current))
-            msg = str(current).upper()
-            if "CERTIFICATE_VERIFY_FAILED" in msg or "SSL" in msg:
+            if isinstance(current, ssl.SSLError):
+                return True
+            if "CERTIFICATE_VERIFY_FAILED" in str(current).upper():
                 return True
             current = current.__cause__ or current.__context__
         return False
@@ -526,33 +527,17 @@ def rag_templates_optimization(
     ogx_client_base_url = (os.environ.get("OGX_CLIENT_BASE_URL") or "").strip()
     ogx_client_api_key = (os.environ.get("OGX_CLIENT_API_KEY") or "").strip()
 
-    import sys
+    import importlib.util
 
-    # Resolve import root for component status tracker
-    if embedded_artifact is not None:
-        if not hasattr(embedded_artifact, "path") or not embedded_artifact.path:
-            raise ValueError("embedded_artifact.path is missing or empty")
-
-        embedded_path = Path(embedded_artifact.path)
-        if embedded_path.is_file():
-            # Path points to a file (e.g., component_status.py), use parent directory
-            import_root = embedded_path.parent
-        elif embedded_path.is_dir():
-            # Path is already a directory
-            import_root = embedded_path
-        else:
-            raise ValueError(f"Invalid embedded_artifact.path: {embedded_path}")
-    else:
-        # Fallback to shared directory
-        import_root = _AUTORAG_SHARED
-
-    sys.path.insert(0, str(import_root))
-    try:
-        from component_status import component_status_tracker
-    finally:
-        sys.path.pop(0)
-
-    status = component_status_tracker(component_status, "rag_templates_optimization")
+    _embedded_path = Path(embedded_artifact.path)
+    import_root = _embedded_path.parent if _embedded_path.is_file() else _embedded_path
+    _module_path = _embedded_path if _embedded_path.is_file() else _embedded_path / "component_status.py"
+    _spec = importlib.util.spec_from_file_location("_autorag_component_status", _module_path)
+    if _spec is None or _spec.loader is None:
+        raise ValueError(f"Cannot load embedded module from {_module_path}")
+    _status_module = importlib.util.module_from_spec(_spec)
+    _spec.loader.exec_module(_status_module)
+    status = _status_module.bootstrap_status_tracker(embedded_artifact, component_status, "rag_templates_optimization")
     if component_status is not None:
         component_status.metadata["display_name"] = "RAG Templates Optimization Status"
     run_optimization_steps = ["chunking", "embedding", "retrieval", "generation", "evaluation"]
@@ -660,28 +645,28 @@ def rag_templates_optimization(
                         explicit_instruction,
                     )
 
-        status.record("run_optimization", "started")
-        event_handler = OptimizationEventHandler()
-        rag_exp = AI4RAGExperiment(
-            client=client,
-            event_handler=event_handler,
-            optimizer_settings=optimizer_settings,
-            search_space=search_space,
-            benchmark_data=benchmark_data,
-            vector_store_type="ogx",
-            documents=documents,
-            optimization_metric=optimization_metric,
-            ogx_vector_io_provider_id=vector_io_provider_id,
-        )
-        rag_exp.search()
-        selected_patterns = [getattr(ev, "pattern_name", "") for ev in rag_exp.results.evaluations]
-        status.record(
-            "run_optimization",
-            "completed",
-            max_rag_patterns=max_rag_patterns,
-            selected_patterns=selected_patterns,
-            steps=run_optimization_steps,
-        )
+        with status.stage("run_optimization", steps=run_optimization_steps):
+            event_handler = OptimizationEventHandler()
+            rag_exp = AI4RAGExperiment(
+                client=client,
+                event_handler=event_handler,
+                optimizer_settings=optimizer_settings,
+                search_space=search_space,
+                benchmark_data=benchmark_data,
+                vector_store_type="ogx",
+                documents=documents,
+                optimization_metric=optimization_metric,
+                ogx_vector_io_provider_id=vector_io_provider_id,
+            )
+            rag_exp.search()
+            selected_patterns = [getattr(ev, "pattern_name", "") for ev in rag_exp.results.evaluations]
+            status.record(
+                "run_optimization",
+                "completed",
+                max_rag_patterns=max_rag_patterns,
+                selected_patterns=selected_patterns,
+                steps=run_optimization_steps,
+            )
 
         with status.stage("write_patterns"):
 

@@ -55,17 +55,14 @@ def load_pipeline_run_status_manifest(
         raise ValueError("pipeline_id cannot be empty or whitespace")
 
     # Defense-in-depth: prevent path traversal even though pipeline_id is typically hardcoded
-    if "/" in pipeline_id or "\\" in pipeline_id or ".." in pipeline_id:
+    if "/" in pipeline_id or "\\" in pipeline_id:
         raise ValueError(f"Invalid pipeline_id '{pipeline_id}': must be a simple identifier without path separators")
 
     path = resolve_templates_dir(templates_root) / PIPELINES_SUBDIR / f"{pipeline_id}.json"
     if not path.is_file():
-        logger.warning(
-            "AUTORAG_RUN_STATUS no pipeline manifest for pipeline_id=%s (expected %s)",
-            pipeline_id,
-            path,
+        raise FileNotFoundError(
+            f"Pipeline run status manifest not found for pipeline_id={pipeline_id!r} (expected {path})"
         )
-        return {"pipeline_id": pipeline_id, "components": []}
     with path.open("r", encoding="utf-8") as f:
         return json.load(f)
 

@@ -8,9 +8,12 @@ from pathlib import Path
 import pytest
 from kfp_components.components.training.autorag.shared.component_status import (
     COMPONENT_STATUS_FILENAME,
+    ComponentStatusEncoder,
     ComponentStatusTracker,
+    bootstrap_status_tracker,
     component_status_tracker,
     load_component_status,
+    load_embedded_component_status_module,
 )
 
 
@@ -65,3 +68,67 @@ class TestComponentStatusTracker:
 
         data = load_component_status(str(tmp_path))
         assert data["stages"][-1]["steps"] == steps
+
+    def test_stage_skips_auto_complete_when_completed_inside_block(self, tmp_path: Path) -> None:
+        """stage() does not overwrite a completed record written inside the block."""
+        tracker = ComponentStatusTracker(str(tmp_path), "rag_templates_optimization")
+        with tracker.stage("run_optimization", steps=["chunking"]):
+            tracker.record("run_optimization", "completed", max_rag_patterns=8)
+        tracker.save()
+
+        data = load_component_status(str(tmp_path))
+        run_stage = next(stage for stage in data["stages"] if stage["id"] == "run_optimization")
+        assert run_stage["status"] == "completed"
+        assert run_stage["max_rag_patterns"] == 8
+
+
+class TestComponentStatusEncoder:
+    """Tests for JSON encoding of status metadata values."""
+
+    def test_encodes_datetime_path_bytes_and_set(self) -> None:
+        """Known non-JSON types are converted for serialization."""
+        encoder = ComponentStatusEncoder()
+        assert encoder.default(Path("/tmp/out")) == "/tmp/out"
+        assert encoder.default(b"abc") == "YWJj"
+        assert encoder.default({1, 2}) == [1, 2]
+
+    def test_unknown_type_raises_type_error(self) -> None:
+        """Unsupported metadata types fail fast instead of being stringified."""
+        encoder = ComponentStatusEncoder()
+        with pytest.raises(TypeError):
+            encoder.default(object())
+
+
+class TestEmbeddedStatusBootstrap:
+    """Tests for embedded-artifact loader helpers."""
+
+    def test_bootstrap_status_tracker_from_shared_dir(self, tmp_path: Path) -> None:
+        """bootstrap_status_tracker loads from a directory embedded artifact path."""
+        shared_dir = Path(__file__).resolve().parents[1]
+        embedded = type("Embedded", (), {"path": str(shared_dir)})()
+        status = bootstrap_status_tracker(embedded, type("Status", (), {"path": str(tmp_path)})(), "test_data_loader")
+        status.record("validate_inputs", "completed")
+        status.save()
+        assert (tmp_path / COMPONENT_STATUS_FILENAME).is_file()
+
+    def test_load_embedded_module_from_file_path(self) -> None:
+        """load_embedded_component_status_module accepts a file embedded artifact path."""
+        module_path = Path(__file__).resolve().parents[1] / "component_status.py"
+        embedded = type("Embedded", (), {"path": str(module_path)})()
+        module = load_embedded_component_status_module(embedded)
+        assert hasattr(module, "bootstrap_status_tracker")
+
+
+class TestComponentStatusTrackerStage:
+    """Additional stage() behaviour tests."""
+
+    def test_stage_marks_failed_on_base_exception_subclass(self, tmp_path: Path) -> None:
+        """stage() records failed when a BaseException subclass escapes the block."""
+        with pytest.raises(KeyboardInterrupt):
+            with ComponentStatusTracker(str(tmp_path), "text_extraction") as tracker:
+                with tracker.stage("extract_documents"):
+                    raise KeyboardInterrupt
+
+        data = load_component_status(str(tmp_path))
+        assert data["stages"][-1]["status"] == "failed"
+        assert data["stages"][-1]["error"] == "KeyboardInterrupt"

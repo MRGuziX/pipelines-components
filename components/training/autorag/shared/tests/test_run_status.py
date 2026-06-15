@@ -55,9 +55,6 @@ def test_load_manifest_rejects_path_traversal():
     with pytest.raises(ValueError, match="must be a simple identifier"):
         load_pipeline_run_status_manifest("foo\\bar")
 
-    with pytest.raises(ValueError, match="must be a simple identifier"):
-        load_pipeline_run_status_manifest("..hidden")
-
 
 def test_load_manifest_rejects_empty_pipeline_id():
     """load_pipeline_run_status_manifest rejects empty pipeline_id."""
@@ -66,3 +63,9 @@ def test_load_manifest_rejects_empty_pipeline_id():
 
     with pytest.raises(ValueError, match="cannot be empty or whitespace"):
         load_pipeline_run_status_manifest("   ")
+
+
+def test_load_manifest_missing_raises_file_not_found(tmp_path):
+    """load_pipeline_run_status_manifest raises when the manifest file is absent."""
+    with pytest.raises(FileNotFoundError, match="nonexistent-pipeline"):
+        load_pipeline_run_status_manifest("nonexistent-pipeline", templates_root=str(tmp_path))

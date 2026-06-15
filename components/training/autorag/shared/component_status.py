@@ -23,6 +23,7 @@ from collections.abc import Iterator
 from contextlib import contextmanager
 from datetime import UTC, datetime
 from pathlib import Path
+from types import ModuleType
 from typing import Any
 
 logger = logging.getLogger(__name__)
@@ -44,9 +45,8 @@ class ComponentStatusEncoder(json.JSONEncoder):
         if isinstance(obj, bytes):
             return base64.b64encode(obj).decode("ascii")
         if isinstance(obj, set):
-            return list(obj)
-        # Fallback: convert to string with type information
-        return f"<{type(obj).__name__}: {str(obj)}>"
+            return sorted(obj, key=str)
+        return super().default(obj)
 
 
 COMPONENT_STATUS_FILENAME = "component_status.json"
@@ -170,13 +170,15 @@ class ComponentStatusTracker:
         self.record(stage_id, STATUS_STARTED, **start_metadata)
         try:
             yield
-        except Exception as exc:
+        except BaseException as exc:
             # Use exception-aware error formatting
             error_msg = f"{type(exc).__name__}: {exc}" if str(exc) else type(exc).__name__
             self.record(stage_id, STATUS_FAILED, error=error_msg)
             raise
         else:
-            self.record(stage_id, STATUS_COMPLETED)
+            latest = next((s for s in reversed(self.stages) if s["id"] == stage_id), None)
+            if latest is None or latest.get("status") not in (STATUS_COMPLETED, STATUS_FAILED):
+                self.record(stage_id, STATUS_COMPLETED)
 
     def __enter__(self) -> ComponentStatusTracker:
         """Enter context: return this tracker."""
@@ -185,9 +187,74 @@ class ComponentStatusTracker:
     def __exit__(self, exc_type: type[BaseException] | None, exc: BaseException | None, tb: Any) -> bool:
         """On exit, mark active stage failed and save status best-effort."""
         if exc is not None:
-            self.mark_active_failed(str(exc))
+            self.mark_active_failed(exc)
         self.save_best_effort()
         return False
+
+
+def _resolve_embedded_module_path(embedded_artifact: Any) -> Path:
+    """Return the path to embedded ``component_status.py`` after validating the artifact."""
+    if embedded_artifact is None:
+        raise ValueError(
+            "embedded_artifact is required for component status tracking. "
+            "Injected by KFP when using embedded_artifact_path."
+        )
+    if not getattr(embedded_artifact, "path", None):
+        raise ValueError("embedded_artifact.path is missing or empty")
+
+    embedded_path = Path(embedded_artifact.path)
+    if embedded_path.is_file():
+        module_path = embedded_path
+    elif embedded_path.is_dir():
+        module_path = embedded_path / "component_status.py"
+    else:
+        raise ValueError(f"Invalid embedded_artifact.path: {embedded_path}")
+    if not module_path.is_file():
+        raise ValueError(f"Embedded component_status module not found at {module_path}")
+    return module_path
+
+
+def resolve_embedded_import_root(embedded_artifact: Any) -> Path:
+    """Return the directory containing embedded shared assets (e.g. script templates)."""
+    embedded_path = Path(embedded_artifact.path)
+    if embedded_path.is_file():
+        return embedded_path.parent
+    if embedded_path.is_dir():
+        return embedded_path
+    raise ValueError(f"Invalid embedded_artifact.path: {embedded_path}")
+
+
+def load_embedded_component_status_module(embedded_artifact: Any) -> ModuleType:
+    """Load ``component_status`` from a KFP embedded artifact path via importlib."""
+    import importlib.util
+
+    module_path = _resolve_embedded_module_path(embedded_artifact)
+    spec = importlib.util.spec_from_file_location("_autorag_component_status", module_path)
+    if spec is None or spec.loader is None:
+        raise ValueError(f"Cannot load embedded module from {module_path}")
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+def tracker_from_embedded(
+    embedded_artifact: Any,
+    component_status: Any,
+    component_id: str,
+) -> ComponentStatusTracker:
+    """Validate embedded artifact path and return a configured tracker."""
+    _resolve_embedded_module_path(embedded_artifact)
+    return component_status_tracker(component_status, component_id)
+
+
+def bootstrap_status_tracker(
+    embedded_artifact: Any,
+    component_status: Any,
+    component_id: str,
+) -> ComponentStatusTracker:
+    """Load this module from ``embedded_artifact`` and return a configured tracker."""
+    status_module = load_embedded_component_status_module(embedded_artifact)
+    return status_module.tracker_from_embedded(embedded_artifact, component_status, component_id)
 
 
 def component_status_tracker(component_status: Any, component_id: str) -> ComponentStatusTracker:

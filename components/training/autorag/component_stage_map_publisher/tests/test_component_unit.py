@@ -43,6 +43,54 @@ class TestPublishComponentStageMap:
         assert "published_at" in document
         assert len(document["components"]) >= 1
         assert component_stage_map_artifact.metadata["display_name"] == "Component Stage Map"
+        assert component_stage_map_artifact.metadata["pipeline_id"] == PIPELINE_RAG_OPTIMIZATION
+        assert component_stage_map_artifact.metadata["component_count"] == len(document["components"])
+
+    def test_rejects_empty_pipeline_id(self, component_stage_map_artifact):
+        """Reject blank pipeline_id."""
+        with pytest.raises(ValueError, match="pipeline_id"):
+            publish_component_stage_map.python_func(
+                pipeline_id="  ",
+                run_id="run-1",
+                component_stage_map=component_stage_map_artifact,
+            )
+
+    def test_rejects_empty_run_id(self, component_stage_map_artifact):
+        """Reject blank run_id."""
+        with pytest.raises(ValueError, match="run_id"):
+            publish_component_stage_map.python_func(
+                pipeline_id=PIPELINE_RAG_OPTIMIZATION,
+                run_id="",
+                component_stage_map=component_stage_map_artifact,
+            )
+
+    @pytest.mark.parametrize("invalid_pipeline_id", ["foo/bar", "foo\\bar", "../../../etc/passwd"])
+    def test_rejects_path_traversal_pipeline_id(self, component_stage_map_artifact, invalid_pipeline_id):
+        """Reject pipeline_id values that could be used for path traversal."""
+        with pytest.raises(ValueError, match="must be a simple identifier"):
+            publish_component_stage_map.python_func(
+                pipeline_id=invalid_pipeline_id,
+                run_id="run-1",
+                component_stage_map=component_stage_map_artifact,
+            )
+
+    def test_rejects_empty_components_list(self, component_stage_map_artifact, tmp_path):
+        """Reject templates whose components list is empty."""
+        templates_root = tmp_path / "run_status_templates"
+        pipelines_dir = templates_root / "pipelines"
+        pipelines_dir.mkdir(parents=True)
+        (pipelines_dir / "empty-pipeline.json").write_text(
+            json.dumps({"pipeline_id": "empty-pipeline", "components": []}),
+            encoding="utf-8",
+        )
+
+        with pytest.raises(FileNotFoundError, match="empty-pipeline"):
+            publish_component_stage_map.python_func(
+                pipeline_id="empty-pipeline",
+                run_id="run-1",
+                component_stage_map=component_stage_map_artifact,
+                embedded_artifact=type("Embedded", (), {"path": str(templates_root)})(),
+            )
 
     def test_unknown_pipeline_id_raises(self, component_stage_map_artifact):
         """Raise when template has no components for pipeline_id."""
