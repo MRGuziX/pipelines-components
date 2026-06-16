@@ -15,8 +15,13 @@ _CUTOFF = "gray"
 
 def _matplotlib():
     """Import matplotlib on demand (same pattern as ROC/PR cells in tabular notebooks)."""
-    import matplotlib.dates as mdates
-    import matplotlib.pyplot as plt
+    try:
+        import matplotlib.dates as mdates
+        import matplotlib.pyplot as plt
+    except ImportError as exc:
+        raise ImportError(
+            "Matplotlib is required for back-testing charts. Install it with: pip install matplotlib"
+        ) from exc
 
     return plt, mdates
 
@@ -205,6 +210,8 @@ def _resolve_cutoff_timestamp(cutoff_start: str | None, timestamps: pd.Series) -
 
 
 def _target_column_name(data: pd.DataFrame) -> str:
+    if data.columns.empty:
+        raise ValueError("Cannot extract target column name from DataFrame with no columns")
     return str(data.columns[0])
 
 

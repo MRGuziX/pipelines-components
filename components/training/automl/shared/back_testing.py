@@ -153,10 +153,18 @@ def _quantile_bounds(predictions: pd.DataFrame) -> tuple[str | None, str | None]
     if not levels:
         return None, None
 
-    def _closest(target: float) -> str | None:
-        return min(levels, key=lambda item: abs(item[0] - target))[1]
+    def _closest(candidates: list[tuple[float, str]], target: float) -> str | None:
+        if not candidates:
+            return None
+        return min(candidates, key=lambda item: abs(item[0] - target))[1]
 
-    return _closest(0.1), _closest(0.9)
+    lower = _closest(levels, 0.1)
+    if lower is None:
+        return None, None
+
+    remaining = [(value, name) for value, name in levels if name != lower]
+    upper = _closest(remaining, 0.9)
+    return lower, upper
 
 
 def _item_ids(tsdf: pd.DataFrame) -> list[Any]:
