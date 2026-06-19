@@ -749,11 +749,13 @@ class TestMultiFormatProcessing:
         descriptor_dir.mkdir()
         descriptor_file = descriptor_dir / "documents_descriptor.json"
         descriptor_file.write_text(
-            json.dumps({
-                "bucket": "test-bucket",
-                "prefix": "docs/",
-                "documents": []  # Empty list - no processing needed
-            })
+            json.dumps(
+                {
+                    "bucket": "test-bucket",
+                    "prefix": "docs/",
+                    "documents": [],  # Empty list - no processing needed
+                }
+            )
         )
 
         documents_descriptor_artifact = mock.MagicMock()

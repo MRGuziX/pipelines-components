@@ -95,7 +95,7 @@ class TestLeaderboardEvaluationUnitTests:
 
         html_text = Path(html_artifact.path).read_text(encoding="utf-8")
         assert html_text.index("pattern_high") < html_text.index("pattern_low")
-        assert 'Best pattern: <strong>pattern_high</strong>' in html_text
+        assert "Best pattern: <strong>pattern_high</strong>" in html_text
         assert 'class="rank-1"' in html_text
 
     def test_optimization_metric_column_prioritized_in_header(self, tmp_path):
@@ -178,17 +178,19 @@ class TestLeaderboardEvaluationUnitTests:
         pattern_dir = rag_patterns_dir / "test_pattern"
         pattern_dir.mkdir()
         (pattern_dir / "pattern.json").write_text(
-            json.dumps({
-                "name": "test_pattern",
-                "final_score": 0.85,
-                "scores": {"faithfulness": {"mean": 0.85}},
-                "settings": {
-                    "chunking": {"method": "recursive"},
-                    "embedding": {"model_id": "embed-model"},
-                    "retrieval": {"method": "vector"},
-                    "generation": {"model_id": "gen-model"},
-                },
-            }),
+            json.dumps(
+                {
+                    "name": "test_pattern",
+                    "final_score": 0.85,
+                    "scores": {"faithfulness": {"mean": 0.85}},
+                    "settings": {
+                        "chunking": {"method": "recursive"},
+                        "embedding": {"model_id": "embed-model"},
+                        "retrieval": {"method": "vector"},
+                        "generation": {"model_id": "gen-model"},
+                    },
+                }
+            ),
             encoding="utf-8",
         )
 

@@ -10,7 +10,7 @@
     "top_n": 2,
     "tags": ["smoke", "timeseries"]
   },
-    {
+  {
     "id": "timeseries_smoke2",
     "dataset_path": "data/timeseries_sales.csv",
     "target": "target",
