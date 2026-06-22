@@ -63,9 +63,7 @@ class TestTextExtractionUnitTests:
             "prefix": "docs/",
             "documents": [{"key": "docs/a.pdf", "size_bytes": 1000}],
         }
-        (descriptor_dir / "documents_descriptor.json").write_text(
-            json.dumps(descriptor), encoding="utf-8"
-        )
+        (descriptor_dir / "documents_descriptor.json").write_text(json.dumps(descriptor), encoding="utf-8")
 
         descriptor_artifact = mock.MagicMock()
         descriptor_artifact.path = str(descriptor_dir)
@@ -108,9 +106,7 @@ class TestTextExtractionUnitTests:
         descriptor_dir = tmp_path / "descriptor"
         descriptor_dir.mkdir()
         descriptor = {"bucket": "b", "documents": [{"key": "a.pdf", "size_bytes": 100}]}
-        (descriptor_dir / "documents_descriptor.json").write_text(
-            json.dumps(descriptor), encoding="utf-8"
-        )
+        (descriptor_dir / "documents_descriptor.json").write_text(json.dumps(descriptor), encoding="utf-8")
 
         descriptor_artifact = mock.MagicMock()
         descriptor_artifact.path = str(descriptor_dir)
@@ -133,9 +129,7 @@ class TestTextExtractionUnitTests:
         descriptor_dir = tmp_path / "descriptor"
         descriptor_dir.mkdir()
         descriptor = {"bucket": "b", "documents": []}
-        (descriptor_dir / "documents_descriptor.json").write_text(
-            json.dumps(descriptor), encoding="utf-8"
-        )
+        (descriptor_dir / "documents_descriptor.json").write_text(json.dumps(descriptor), encoding="utf-8")
 
         descriptor_artifact = mock.MagicMock()
         descriptor_artifact.path = str(descriptor_dir)
@@ -161,9 +155,7 @@ class TestTextExtractionUnitTests:
         descriptor_dir = tmp_path / "descriptor"
         descriptor_dir.mkdir()
         descriptor = {"bucket": "b", "documents": [{"key": "a.pdf", "size_bytes": 100}]}
-        (descriptor_dir / "documents_descriptor.json").write_text(
-            json.dumps(descriptor), encoding="utf-8"
-        )
+        (descriptor_dir / "documents_descriptor.json").write_text(json.dumps(descriptor), encoding="utf-8")
 
         descriptor_artifact = mock.MagicMock()
         descriptor_artifact.path = str(descriptor_dir)

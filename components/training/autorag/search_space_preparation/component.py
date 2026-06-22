@@ -47,6 +47,7 @@ def search_space_preparation(
     from pathlib import Path
 
     from ai4rag.utils.compat import ensure_sqlite3
+
     ensure_sqlite3()
 
     from ai4rag.components.optimization.search_space_preparation import prepare_search_space_report

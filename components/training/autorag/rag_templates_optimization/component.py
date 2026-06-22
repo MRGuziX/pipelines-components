@@ -13,17 +13,17 @@ _AUTORAG_SHARED = Path(__file__).parents[1] / "shared"
     install_kfp_package=False,
 )
 def rag_templates_optimization(
-        extracted_text: dsl.InputPath(dsl.Artifact),
-        test_data: dsl.InputPath(dsl.Artifact),
-        search_space_prep_report: dsl.InputPath(dsl.Artifact),
-        rag_patterns: dsl.Output[dsl.Artifact],
-        test_data_key: Optional[str],
-        vector_io_provider_id: str,
-        html_artifact: dsl.Output[dsl.HTML],
-        embedded_artifact: dsl.EmbeddedInput[dsl.Dataset] = None,
-        optimization_settings: Optional[dict] = None,
-        input_data_key: Optional[str] = "",
-        component_status: dsl.Output[dsl.Artifact] = None,
+    extracted_text: dsl.InputPath(dsl.Artifact),
+    test_data: dsl.InputPath(dsl.Artifact),
+    search_space_prep_report: dsl.InputPath(dsl.Artifact),
+    rag_patterns: dsl.Output[dsl.Artifact],
+    test_data_key: Optional[str],
+    vector_io_provider_id: str,
+    html_artifact: dsl.Output[dsl.HTML],
+    embedded_artifact: dsl.EmbeddedInput[dsl.Dataset] = None,
+    optimization_settings: Optional[dict] = None,
+    input_data_key: Optional[str] = "",
+    component_status: dsl.Output[dsl.Artifact] = None,
 ):
     """RAG Templates Optimization component.
 
@@ -53,9 +53,10 @@ def rag_templates_optimization(
     from pathlib import Path
 
     from ai4rag.utils.compat import ensure_sqlite3
+
     ensure_sqlite3()
 
-    from ai4rag.components.assets_generator.leaderboard import build_leaderboard_html, DEFAULT_METRIC
+    from ai4rag.components.assets_generator.leaderboard import DEFAULT_METRIC, build_leaderboard_html
     from ai4rag.components.optimization.rag_templates_optimization import run_rag_optimization
     from ai4rag.components.utils import create_ogx_client
 
@@ -122,7 +123,8 @@ def rag_templates_optimization(
             html_content = build_leaderboard_html(
                 patterns_dir=rag_patterns,
                 optimization_metric=(
-                    optimization_settings.get("metric") if isinstance(optimization_settings, dict) else DEFAULT_METRIC)
+                    optimization_settings.get("metric") if isinstance(optimization_settings, dict) else DEFAULT_METRIC
+                ),
             )
 
             Path(html_artifact.path).parent.mkdir(parents=True, exist_ok=True)

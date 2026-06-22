@@ -15,7 +15,7 @@ MOCKED_ENV_VARIABLES = {
 
 
 def _make_ai4rag_mocks():
-    """Build mock modules for ai4rag.components, ai4rag.components.optimization, ai4rag.utils.compat."""
+    """Build mock modules for ai4rag optimization, utils, compat, and leaderboard."""
     mock_create_ogx_client = mock.MagicMock(name="create_ogx_client")
     mock_run_rag_optimization = mock.MagicMock(name="run_rag_optimization")
     mock_ensure_sqlite3 = mock.MagicMock(name="ensure_sqlite3")
@@ -29,12 +29,18 @@ def _make_ai4rag_mocks():
     mock_compat = mock.MagicMock()
     mock_compat.ensure_sqlite3 = mock_ensure_sqlite3
 
+    mock_leaderboard = mock.MagicMock()
+    mock_leaderboard.build_leaderboard_html = mock.MagicMock(return_value="<html></html>")
+    mock_leaderboard.DEFAULT_METRIC = "faithfulness"
+
     modules = {
         "ai4rag": mock.MagicMock(),
         "ai4rag.components": mock.MagicMock(),
         "ai4rag.components.utils": mock_utils,
         "ai4rag.components.optimization": mock.MagicMock(),
         "ai4rag.components.optimization.rag_templates_optimization": mock_optimization_module,
+        "ai4rag.components.assets_generator": mock.MagicMock(),
+        "ai4rag.components.assets_generator.leaderboard": mock_leaderboard,
         "ai4rag.utils": mock.MagicMock(),
         "ai4rag.utils.compat": mock_compat,
     }
@@ -91,7 +97,7 @@ class TestRagTemplatesOptimizationUnitTests:
                 input_data_key="data/docs/",
             )
 
-        mock_sqlite.assert_called_once()
+        assert mock_sqlite.call_count == 2
         mock_create_ogx.assert_called_once_with(
             base_url="https://ogx.example.com",
             api_key="test-api-key",

@@ -14,9 +14,6 @@ from kfp_components.components.data_processing.autorag.text_extraction import (
 from kfp_components.components.training.autorag.component_stage_map_publisher import (
     publish_component_stage_map,
 )
-from kfp_components.components.training.autorag.leaderboard_evaluation import (
-    leaderboard_evaluation,
-)
 from kfp_components.components.training.autorag.rag_templates_optimization.component import (
     rag_templates_optimization,
 )

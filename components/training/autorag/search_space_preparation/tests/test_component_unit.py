@@ -14,7 +14,7 @@ MOCKED_ENV_VARIABLES = {
 
 
 def _make_ai4rag_mocks():
-    """Build mock modules for ai4rag.components.optimization.search_space_preparation, ai4rag.components.utils.ogx_client, ai4rag.utils.compat."""
+    """Build mock modules for ai4rag search_space_preparation, ogx_client, and compat."""
     mock_create_ogx_client = mock.MagicMock(name="create_ogx_client")
     mock_prepare_report = mock.MagicMock(name="prepare_search_space_report")
     mock_ensure_sqlite3 = mock.MagicMock(name="ensure_sqlite3")

@@ -6,7 +6,7 @@
 
 Index extracted text into a vector store with optional batch processing.
 
-Reads DoclingDocument JSON files from extracted_text, chunks them, embeds via OGX, and adds them to the vector store. When batch_size > 0, processes documents in batches to limit memory use and allow progress on large inputs.
+Thin wrapper that delegates to ``ai4rag.components.data.index_documents``.
 
 ## Inputs 📥
 
@@ -79,7 +79,7 @@ def example_pipeline(
     - Name: Pipelines, Version: >=2.15.2
   - External Services:
     - Name: RHOAI Connections API, Version: >=1.0.0
-    - Name: ai4rag, Version: ~=0.7.0
+    - Name: ai4rag, Version: ~=0.8.0
 - **Tags**:
   - data-indexing
   - autorag
