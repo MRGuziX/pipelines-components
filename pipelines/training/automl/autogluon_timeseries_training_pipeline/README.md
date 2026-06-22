@@ -26,8 +26,6 @@ temporal** split on ``id_column`` / ``timestamp_column``: default **80/20** trai
 2. **Model generation + full refit** (``autogluon_timeseries_models_training``): Trains multiple AutoGluon TimeSeries models on the selection split, picks top ``top_n``, and refits each selected model on the full train portion (**selection + extra** splits). The component writes all refitted models
 to a single combined ``models_artifact``.
 
-3. **Leaderboard** (``leaderboard_evaluation``): Builds an HTML leaderboard from the combined refitted-model artifact using the training stage's evaluation metric.
-
 ## Inputs 📥
 
 | Parameter | Type | Default | Description |
