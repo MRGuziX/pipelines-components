@@ -648,6 +648,13 @@ def autogluon_models_training(
             with (Path(models_artifact.path) / model_name_full / "model.json").open("w", encoding="utf-8") as f:
                 json.dump(model_metadata, f, indent=2)
 
+        status.record(
+            "refit_and_evaluate",
+            "completed",
+            model_count=len(model_names_full),
+            eval_metric=str(predictor.eval_metric),
+        )
+
         # Phase C: leaderboard generation - uses eval_results_by_model already in memory
         status.record("build_leaderboard", "started")
 
@@ -656,7 +663,6 @@ def autogluon_models_training(
         from kfp_components.components.training.automl.shared.leaderboard_utils import (
             _build_leaderboard_html,
             _build_leaderboard_table,
-            _round_metrics,
         )
 
         base_uri = models_artifact.uri.rstrip("/")
@@ -666,7 +672,7 @@ def autogluon_models_training(
             leaderboard_rows.append(
                 {
                     "model": model_name_full,
-                    **_round_metrics(eval_results_by_model[model_name_full]),
+                    **eval_results_by_model[model_name_full],
                     "notebook": f"{model_uri}/notebooks/automl_predictor_notebook.ipynb",
                     "predictor": f"{model_uri}/predictor",
                 }
@@ -674,11 +680,24 @@ def autogluon_models_training(
 
         # AutoGluon evaluate_predictions() uses higher-is-better sign convention for all metrics;
         # error metrics (RMSE, MAE, log_loss) are returned negated, so descending sort is always correct.
-        leaderboard_df = pd.DataFrame(leaderboard_rows).sort_values(by=eval_metric, ascending=False)
+        # Sort on raw (unrounded) values so close scores cannot flip rank after rounding.
+        if not leaderboard_rows:
+            raise RuntimeError("Leaderboard rows are empty; no models available for ranking.")
+        leaderboard_df = pd.DataFrame(leaderboard_rows)
+        if eval_metric in leaderboard_rows[0]:
+            leaderboard_df = leaderboard_df.sort_values(by=eval_metric, ascending=False, na_position="last")
+        else:
+            logger.warning(
+                "eval_metric '%s' not found in row keys %s; preserving refit order.",
+                eval_metric,
+                list(leaderboard_rows[0].keys()),
+            )
         n = len(leaderboard_df)
-        leaderboard_df.index = pd.RangeIndex(start=1, stop=n + 1, name="rank")
-        html_table = _build_leaderboard_table(leaderboard_df)
         best_model_name = str(leaderboard_df.iloc[0]["model"])
+        leaderboard_df.index = pd.RangeIndex(start=1, stop=n + 1, name="rank")
+        _metric_cols = [c for c in leaderboard_df.columns if c not in ("model", "notebook", "predictor")]
+        leaderboard_df[_metric_cols] = leaderboard_df[_metric_cols].round(4)
+        html_table = _build_leaderboard_table(leaderboard_df)
 
         _template_ref = (
             importlib.resources.files("kfp_components.components.training.automl.shared")
@@ -717,13 +736,6 @@ def autogluon_models_training(
             "best_model_name": best_model_name,
             "models": models_metadata,
         }
-
-        status.record(
-            "refit_and_evaluate",
-            "completed",
-            model_count=len(model_names_full),
-            eval_metric=str(predictor.eval_metric),
-        )
 
     return NamedTuple("outputs", eval_metric=str, best_model_name=str)(
         eval_metric=eval_metric,

@@ -471,7 +471,6 @@ def autogluon_timeseries_models_training(
         from kfp_components.components.training.automl.shared.leaderboard_utils import (
             _build_leaderboard_html,
             _build_leaderboard_table,
-            _round_metrics,
         )
 
         eval_results_by_model = {m["name"]: m["metrics"]["test_data"] for m in models_metadata}
@@ -482,18 +481,31 @@ def autogluon_timeseries_models_training(
             leaderboard_rows.append(
                 {
                     "model": model_name_full,
-                    **_round_metrics(eval_results_by_model[model_name_full]),
+                    **eval_results_by_model[model_name_full],
                     "notebook": f"{model_uri}/notebooks/automl_predictor_notebook.ipynb",
                     "predictor": f"{model_uri}/predictor",
                 }
             )
 
         # AutoGluon negates error metrics (e.g. MASE -> -MASE) so descending = best model first.
-        leaderboard_df = pd.DataFrame(leaderboard_rows).sort_values(by=eval_metric, ascending=False)
+        # Sort on raw (unrounded) values so close scores cannot flip rank after rounding.
+        if not leaderboard_rows:
+            raise RuntimeError("Leaderboard rows are empty; no models available for ranking.")
+        leaderboard_df = pd.DataFrame(leaderboard_rows)
+        if eval_metric in leaderboard_rows[0]:
+            leaderboard_df = leaderboard_df.sort_values(by=eval_metric, ascending=False, na_position="last")
+        else:
+            logger.warning(
+                "eval_metric '%s' not found in row keys %s; preserving refit order.",
+                eval_metric,
+                list(leaderboard_rows[0].keys()),
+            )
         n = len(leaderboard_df)
-        leaderboard_df.index = pd.RangeIndex(start=1, stop=n + 1, name="rank")
-        html_table = _build_leaderboard_table(leaderboard_df)
         best_model_name = str(leaderboard_df.iloc[0]["model"])
+        leaderboard_df.index = pd.RangeIndex(start=1, stop=n + 1, name="rank")
+        _metric_cols = [c for c in leaderboard_df.columns if c not in ("model", "notebook", "predictor")]
+        leaderboard_df[_metric_cols] = leaderboard_df[_metric_cols].round(4)
+        html_table = _build_leaderboard_table(leaderboard_df)
 
         _template_ref = (
             importlib.resources.files("kfp_components.components.training.automl.shared")

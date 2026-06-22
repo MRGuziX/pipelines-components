@@ -9,19 +9,6 @@ import html as _html_module
 from pathlib import Path
 
 
-def _round_metrics(metrics: dict, decimals: int = 4) -> dict:
-    """Round numeric values in a metrics dict to the given number of decimals.
-
-    Args:
-        metrics: Dictionary of metric names to values.
-        decimals: Number of decimal places to round to.
-
-    Returns:
-        Dictionary with numeric values rounded; non-numeric values unchanged.
-    """
-    return {k: round(v, decimals) if isinstance(v, (int, float)) else v for k, v in metrics.items()}
-
-
 def _build_leaderboard_table(df) -> str:
     """Build table HTML with Notebook and Predictor as separate URI columns.
 
@@ -90,6 +77,6 @@ def _build_leaderboard_html(
     return (
         template.replace("__TABLE_HTML__", table_html)
         .replace("__NUM_MODELS__", str(num_models))
-        .replace("__EVAL_METRIC__", eval_metric)
-        .replace("__BEST_MODEL_NAME__", best_model_name)
+        .replace("__EVAL_METRIC__", _html_module.escape(eval_metric))
+        .replace("__BEST_MODEL_NAME__", _html_module.escape(best_model_name))
     )
