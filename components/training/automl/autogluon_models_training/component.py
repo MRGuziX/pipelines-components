@@ -71,7 +71,8 @@ def autogluon_models_training(
             to ``"r2"`` for regression and ``"accuracy"`` otherwise.
 
     Returns:
-        NamedTuple with ``eval_metric`` (the metric used for ranking, e.g. ``"r2"`` or ``"accuracy"``).
+        NamedTuple with ``eval_metric`` (the metric used for ranking, e.g. ``"r2"`` or ``"accuracy"``)
+        and ``best_model_name`` (name of the highest-ranked refitted model, e.g. ``"LightGBM_BAG_L1_FULL"``).
 
     Raises:
         TypeError: If any required string parameter is empty or configs have wrong types.
@@ -671,6 +672,8 @@ def autogluon_models_training(
                 }
             )
 
+        # AutoGluon evaluate_predictions() uses higher-is-better sign convention for all metrics;
+        # error metrics (RMSE, MAE, log_loss) are returned negated, so descending sort is always correct.
         leaderboard_df = pd.DataFrame(leaderboard_rows).sort_values(by=eval_metric, ascending=False)
         n = len(leaderboard_df)
         leaderboard_df.index = pd.RangeIndex(start=1, stop=n + 1, name="rank")

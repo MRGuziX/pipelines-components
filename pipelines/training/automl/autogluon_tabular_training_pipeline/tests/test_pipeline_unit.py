@@ -154,6 +154,7 @@ class TestAutogluonTabularTrainingPipelineUnitTests:
             Path(tmp_path).unlink(missing_ok=True)
 
         assert "componentInputParameter: eval_metric" in content
+        assert "best_model_name" in content
 
     def test_compiled_pipeline_wires_preset_to_training_task(self):
         """Preset pipeline input is forwarded into the training task; good_quality branch has higher resources."""

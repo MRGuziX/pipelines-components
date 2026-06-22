@@ -39,7 +39,7 @@ mutates predictor state. All artifacts are written under a single output artifac
 
 | Name | Type | Description |
 | ---- | ---- | ----------- |
-| Output | `NamedTuple('outputs', eval_metric=str, best_model_name=str)` | NamedTuple with ``eval_metric`` (the metric used for ranking, e.g. ``"r2"`` or ``"accuracy"``). |
+| Output | `NamedTuple('outputs', eval_metric=str, best_model_name=str)` | NamedTuple with ``eval_metric`` (the metric used for ranking, e.g. ``"r2"`` or ``"accuracy"``) and ``best_model_name`` (name of the highest-ranked refitted model, e.g. ``"LightGBM_BAG_L1_FULL"``). |
 
 ## Metadata 🗂️
 

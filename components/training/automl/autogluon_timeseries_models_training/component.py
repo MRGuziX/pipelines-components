@@ -351,7 +351,8 @@ def autogluon_timeseries_models_training(
                 )
                 metrics = predictor_refit.evaluate(test_ts, metrics=list(AVAILABLE_METRICS.keys()))
                 # Keep raw AutoGluon evaluate() signs for metrics.json (higher-is-better / negated errors)
-                # so leaderboard_evaluation sorting stays correct. back_testing.json normalizes separately.
+                # so Phase C leaderboard sorting (ascending=False) stays correct.
+                # back_testing.json normalizes separately.
                 metrics_dict = {}
                 for k, v in metrics.items():
                     if hasattr(v, "item"):
@@ -517,8 +518,6 @@ def autogluon_timeseries_models_training(
             best_model=best_model_name,
             model_count=n,
         )
-
-        component_status.metadata["display_name"] = "Timeseries Models Training Status"
 
         models_artifact.metadata["model_names"] = json.dumps(model_names_full)
         models_artifact.metadata["context"] = {

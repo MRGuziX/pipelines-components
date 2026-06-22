@@ -914,3 +914,148 @@ class TestBackTestingArtifactFailure:
         assert not (metrics_dir / "back_testing.json").exists()
         warning_records = [r for r in caplog.records if r.levelno == logging.WARNING]
         assert any("back_testing.json" in r.message for r in warning_records)
+        assert "Could not generate back_testing.json" in caplog.text
+
+
+class TestLeaderboardPhase:
+    """Tests for the Phase C leaderboard generation inlined into autogluon_timeseries_models_training."""
+
+    def _configure_pd_mock_for_leaderboard(self, best_model: str, metrics: dict):
+        """Set up sys.modules["pandas"].DataFrame so Phase C produces a deterministic leaderboard.
+
+        Phase C calls pd.DataFrame(rows).sort_values(...) and then reads iloc[0]["model"].
+        Since pandas is module-mocked, we wire the return-value chain explicitly.
+        """
+        mock_sorted_df = mock.MagicMock()
+        mock_sorted_df.iloc = [{"model": best_model}]
+        mock_sorted_df.to_json.return_value = json.dumps([{"model": best_model, **metrics}])
+        import sys
+
+        sys.modules["pandas"].DataFrame.return_value.sort_values.return_value = mock_sorted_df
+        return mock_sorted_df
+
+    @mock.patch("pandas.read_csv")
+    @mock.patch("pandas.concat")
+    @mock.patch("autogluon.timeseries.TimeSeriesDataFrame")
+    @mock.patch("autogluon.timeseries.TimeSeriesPredictor")
+    def test_leaderboard_html_written_and_best_model_returned(
+        self,
+        mock_predictor_cls,
+        mock_ts_df_cls,
+        mock_concat,
+        mock_read_csv,
+        mock_artifacts,  # noqa: F811
+        tmp_path,
+    ):
+        """Phase C writes the leaderboard HTML file and returns best_model_name in the result."""
+        models_artifact, extra_train_path = mock_artifacts
+        self._configure_pd_mock_for_leaderboard("DeepAR_FULL", {"MASE": -0.42})
+
+        mock_predictor = mock.MagicMock()
+        mock_predictor.leaderboard.return_value = _mock_leaderboard(["DeepAR"])
+        mock_predictor.fit_summary.return_value = {"model_hyperparams": {"DeepAR": {}}}
+        mock_predictor._trainer.get_model_attribute.return_value = mock.MagicMock
+        mock_refit_predictor = mock.MagicMock()
+        mock_refit_predictor.evaluate.return_value = {"MASE": -0.42}
+        mock_predictor_cls.side_effect = [mock_predictor, mock_refit_predictor]
+        mock_ts_df_cls.from_data_frame.side_effect = [_mock_ts_df(), _mock_ts_df(), _mock_ts_df()]
+        mock_ts_df_cls.from_path.return_value = _mock_ts_df()
+        mock_ts_df_cls.return_value = _mock_ts_df()
+        mock_concat.return_value = mock.MagicMock()
+        mock_read_csv.side_effect = [mock.MagicMock(), mock.MagicMock()]
+        test_data = mock.MagicMock()
+        test_data.path = "/tmp/test.csv"
+
+        html_artifact = mock.MagicMock()
+        html_artifact.path = str(tmp_path / "leaderboard.html")
+        html_artifact.metadata = {}
+
+        result = autogluon_timeseries_models_training.python_func(
+            target="sales",
+            id_column="item_id",
+            timestamp_column="timestamp",
+            train_data_path="/tmp/train.csv",
+            test_data=test_data,
+            top_n=1,
+            workspace_path="/tmp/workspace",
+            pipeline_name="ts-pipeline-123",
+            run_id="run-123",
+            models_artifact=models_artifact,
+            extra_train_data_path=extra_train_path,
+            html_artifact=html_artifact,
+        )
+
+        # HTML file written to disk
+        assert Path(html_artifact.path).exists()
+        html_text = Path(html_artifact.path).read_text(encoding="utf-8")
+        assert "MASE" in html_text
+        assert "DeepAR_FULL" in html_text
+
+        # best_model_name is the top-ranked model
+        assert result.best_model_name == "DeepAR_FULL"
+
+        # context["best_model_name"] matches the return value
+        assert models_artifact.metadata["context"]["best_model_name"] == result.best_model_name
+
+        # html_artifact metadata populated
+        assert html_artifact.metadata["display_name"] == "automl_leaderboard"
+        data_raw = html_artifact.metadata["data"]
+        assert isinstance(data_raw, str), "html_artifact.metadata['data'] must be a JSON string"
+        data_parsed = json.loads(data_raw)
+        assert isinstance(data_parsed, list)
+
+    @mock.patch("pandas.read_csv")
+    @mock.patch("pandas.concat")
+    @mock.patch("autogluon.timeseries.TimeSeriesDataFrame")
+    @mock.patch("autogluon.timeseries.TimeSeriesPredictor")
+    def test_leaderboard_best_model_name_consistent_across_return_and_context(
+        self,
+        mock_predictor_cls,
+        mock_ts_df_cls,
+        mock_concat,
+        mock_read_csv,
+        mock_artifacts,  # noqa: F811
+        tmp_path,
+    ):
+        """best_model_name in the return tuple and in models_artifact context are identical."""
+        models_artifact, extra_train_path = mock_artifacts
+        self._configure_pd_mock_for_leaderboard("TFT_FULL", {"MASE": -0.30})
+
+        mock_predictor = mock.MagicMock()
+        mock_predictor.leaderboard.return_value = _mock_leaderboard(["TFT"])
+        mock_predictor.fit_summary.return_value = {"model_hyperparams": {"TFT": {}}}
+        mock_predictor._trainer.get_model_attribute.return_value = mock.MagicMock
+        mock_refit_predictor = mock.MagicMock()
+        mock_refit_predictor.evaluate.return_value = {"MASE": -0.30}
+        mock_predictor_cls.side_effect = [mock_predictor, mock_refit_predictor]
+        mock_ts_df_cls.from_data_frame.side_effect = [_mock_ts_df(), _mock_ts_df(), _mock_ts_df()]
+        mock_ts_df_cls.from_path.return_value = _mock_ts_df()
+        mock_ts_df_cls.return_value = _mock_ts_df()
+        mock_concat.return_value = mock.MagicMock()
+        mock_read_csv.side_effect = [mock.MagicMock(), mock.MagicMock()]
+        test_data = mock.MagicMock()
+        test_data.path = "/tmp/test.csv"
+
+        html_artifact = mock.MagicMock()
+        html_artifact.path = str(tmp_path / "leaderboard2.html")
+        html_artifact.metadata = {}
+
+        result = autogluon_timeseries_models_training.python_func(
+            target="sales",
+            id_column="item_id",
+            timestamp_column="timestamp",
+            train_data_path="/tmp/train.csv",
+            test_data=test_data,
+            top_n=1,
+            workspace_path="/tmp/workspace",
+            pipeline_name="ts-pipeline-123",
+            run_id="run-123",
+            models_artifact=models_artifact,
+            extra_train_data_path=extra_train_path,
+            html_artifact=html_artifact,
+        )
+
+        assert result.best_model_name == "TFT_FULL"
+        context = models_artifact.metadata["context"]
+        assert "best_model_name" in context
+        assert context["best_model_name"] == result.best_model_name
