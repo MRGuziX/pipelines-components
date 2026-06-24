@@ -255,26 +255,6 @@ def autogluon_timeseries_models_training(
         }
 
         # Stage 2: Full refit of selected models on full train data (selection + extra).
-        if models_artifact is None or not extra_train_data_path.strip():
-            logger.info(
-                "Skipping combined full-refit stage; missing models_artifact or extra_train_data_path. "
-                "Returning selection-only outputs for backward compatibility."
-            )
-            outputs = NamedTuple(
-                "outputs",
-                top_models=List[str],
-                predictor_path=str,
-                eval_metric=str,
-                model_config=dict,
-                best_model_name=str,
-            )
-            return outputs(
-                top_models=top_models,
-                predictor_path=str(predictor_path),
-                eval_metric=eval_metric,
-                model_config=model_config,
-                best_model_name="",
-            )
         from autogluon.timeseries.metrics import AVAILABLE_METRICS
         from autogluon.timeseries.models.ensemble import AbstractTimeSeriesEnsembleModel
 
