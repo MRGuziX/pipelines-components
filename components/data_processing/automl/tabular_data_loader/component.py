@@ -96,7 +96,7 @@ def automl_data_loader(  # noqa: D417
     PANDAS_CHUNK_SIZE = 10000  # Rows per batch for streaming read
     DEFAULT_RANDOM_STATE = 42
     VALID_SAMPLING_METHODS = {"first_n_rows", "stratified", "random"}
-    VALID_TASK_TYPES = {"binary", "multiclass", "regression"}
+    VALID_TASK_TYPES = {"binarny", "multiclass", "regression"}
 
     # Input validation
     for param, value in (
