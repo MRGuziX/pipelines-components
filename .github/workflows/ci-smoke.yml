@@ -161,7 +161,8 @@ jobs:
           RHOAI_PIPELINE_RUN_TIMEOUT=3600
           RHOAI_KFP_POLL_INTERVAL_SECONDS=25
           KFP_DISABLE_EXECUTION_CACHING_BY_DEFAULT=true
-          AUTOML_UPLOAD_TEST_DATASETS=false
+          RHOAI_USE_MANAGED_PIPELINES=false
+          AUTOML_UPLOAD_TEST_DATASETS=true
           AUTOML_TABULAR_PIPELINE_PATH=${GITHUB_WORKSPACE}/pipelines/training/automl/autogluon_tabular_training_pipeline/pipeline.yaml
           AUTOML_TIMESERIES_PIPELINE_PATH=${GITHUB_WORKSPACE}/pipelines/training/automl/autogluon_timeseries_training_pipeline/pipeline.yaml
           EOF
