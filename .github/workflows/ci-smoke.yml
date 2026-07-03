@@ -78,38 +78,28 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Wait for Konflux build
+      - name: Verify Konflux build passed
         uses: actions/github-script@v7
         with:
           script: |
             const sha = context.payload.pull_request.head.sha;
             const checkName = 'Red Hat Konflux / odh-automl-ci-pull-request';
-            const maxAttempts = 60;
-            const interval = 30000;
-            for (let i = 0; i < maxAttempts; i++) {
-              const { data } = await github.rest.checks.listForRef({
-                owner: context.repo.owner,
-                repo: context.repo.repo,
-                ref: sha,
-                check_name: checkName,
-              });
-              if (data.check_runs.length > 0) {
-                const run = data.check_runs[0];
-                if (run.status === 'completed') {
-                  if (run.conclusion === 'success') {
-                    core.info(`Konflux build passed`);
-                    return;
-                  }
-                  core.setFailed(`Konflux build finished with: ${run.conclusion}`);
-                  return;
-                }
-                core.info(`Konflux build status: ${run.status} (attempt ${i + 1}/${maxAttempts})`);
-              } else {
-                core.info(`Konflux check not found yet (attempt ${i + 1}/${maxAttempts})`);
-              }
-              await new Promise(r => setTimeout(r, interval));
+            const { data } = await github.rest.checks.listForRef({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              ref: sha,
+              check_name: checkName,
+            });
+            if (data.check_runs.length === 0) {
+              core.setFailed(`Konflux check '${checkName}' not found for SHA ${sha}`);
+              return;
             }
-            core.setFailed('Timed out waiting for Konflux build (30 min)');
+            const run = data.check_runs[0];
+            if (run.status !== 'completed' || run.conclusion !== 'success') {
+              core.setFailed(`Konflux build not passed (status: ${run.status}, conclusion: ${run.conclusion}). Add the ok-to-test label after the Konflux build succeeds.`);
+              return;
+            }
+            core.info('Konflux build passed');
 
       - name: Get image digest
         id: digest
@@ -212,38 +202,28 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Wait for Konflux build
+      - name: Verify Konflux build passed
         uses: actions/github-script@v7
         with:
           script: |
             const sha = context.payload.pull_request.head.sha;
             const checkName = 'Red Hat Konflux / odh-autorag-ci-pull-request';
-            const maxAttempts = 60;
-            const interval = 30000;
-            for (let i = 0; i < maxAttempts; i++) {
-              const { data } = await github.rest.checks.listForRef({
-                owner: context.repo.owner,
-                repo: context.repo.repo,
-                ref: sha,
-                check_name: checkName,
-              });
-              if (data.check_runs.length > 0) {
-                const run = data.check_runs[0];
-                if (run.status === 'completed') {
-                  if (run.conclusion === 'success') {
-                    core.info(`Konflux build passed`);
-                    return;
-                  }
-                  core.setFailed(`Konflux build finished with: ${run.conclusion}`);
-                  return;
-                }
-                core.info(`Konflux build status: ${run.status} (attempt ${i + 1}/${maxAttempts})`);
-              } else {
-                core.info(`Konflux check not found yet (attempt ${i + 1}/${maxAttempts})`);
-              }
-              await new Promise(r => setTimeout(r, interval));
+            const { data } = await github.rest.checks.listForRef({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              ref: sha,
+              check_name: checkName,
+            });
+            if (data.check_runs.length === 0) {
+              core.setFailed(`Konflux check '${checkName}' not found for SHA ${sha}`);
+              return;
             }
-            core.setFailed('Timed out waiting for Konflux build (30 min)');
+            const run = data.check_runs[0];
+            if (run.status !== 'completed' || run.conclusion !== 'success') {
+              core.setFailed(`Konflux build not passed (status: ${run.status}, conclusion: ${run.conclusion}). Add the ok-to-test label after the Konflux build succeeds.`);
+              return;
+            }
+            core.info('Konflux build passed');
 
       - name: Get image digest
         id: digest
