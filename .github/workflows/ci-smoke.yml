@@ -17,7 +17,7 @@ jobs:
       || (github.event.action == 'synchronize'
           && contains(github.event.pull_request.labels.*.name, 'ok-to-test'))
     outputs:
-      run_automl: ${{ steps.changes.outputs.automl }}
+      run_automl: ${{ steps.automl_effective.outputs.run }}
       run_autorag: ${{ steps.changes.outputs.autorag }}
     steps:
       - uses: actions/checkout@v4
@@ -26,16 +26,47 @@ jobs:
         id: changes
         uses: dorny/paths-filter@v3
         with:
+          predicate-quantifier: 'some'
           filters: |
             automl:
               - 'components/training/automl/**'
               - 'components/data_processing/automl/**'
               - 'pipelines/training/automl/**'
+              - 'utils/**'
+              - 'pyproject.toml'
+              - '.tekton/odh-automl-ci-pull-request.yaml'
+            automl_only_ignored:
+              - '**/*.md'
+              - '**/tests/**'
+              - '**/*_test.py'
+              - '**/metadata.yaml'
             autorag:
               - 'components/training/autorag/**'
               - 'components/data_processing/autorag/**'
               - 'pipelines/training/autorag/**'
               - 'pipelines/data_processing/autorag/**'
+
+      - name: Check if automl changes are only ignored files
+        id: automl_effective
+        run: |
+          if [[ "${{ steps.changes.outputs.automl }}" == "true" ]]; then
+            CHANGED_FILES=$(git diff --name-only ${{ github.event.pull_request.base.sha }}...${{ github.event.pull_request.head.sha }})
+            ALL_IGNORED=true
+            for f in $CHANGED_FILES; do
+              if [[ "$f" =~ \.(md)$ ]] || [[ "$f" =~ /tests/ ]] || [[ "$f" =~ _test\.py$ ]] || [[ "$f" =~ /metadata\.yaml$ ]]; then
+                continue
+              fi
+              ALL_IGNORED=false
+              break
+            done
+            if [[ "$ALL_IGNORED" == "true" ]]; then
+              echo "run=false" >> "$GITHUB_OUTPUT"
+            else
+              echo "run=true" >> "$GITHUB_OUTPUT"
+            fi
+          else
+            echo "run=false" >> "$GITHUB_OUTPUT"
+          fi
 
   automl-smoke:
     name: AutoML Smoke
