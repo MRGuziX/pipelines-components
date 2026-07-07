@@ -126,18 +126,18 @@ jobs:
 
       - name: Write env file from secrets
         env:
-          RHOAI_URL: ${{ secrets.AUTOML_RHOAI_URL }}
-          RHOAI_TOKEN: ${{ secrets.AUTOML_RHOAI_TOKEN }}
-          RHOAI_PROJECT_NAME: ${{ secrets.AUTOML_RHOAI_PROJECT_NAME }}
-          KFP_VERIFY_SSL: ${{ secrets.AUTOML_KFP_VERIFY_SSL }}
-          AWS_S3_ENDPOINT: ${{ secrets.AUTOML_AWS_S3_ENDPOINT }}
-          AWS_ACCESS_KEY_ID: ${{ secrets.AUTOML_AWS_ACCESS_KEY_ID }}
-          AWS_SECRET_ACCESS_KEY: ${{ secrets.AUTOML_AWS_SECRET_ACCESS_KEY }}
-          AWS_DEFAULT_REGION: ${{ secrets.AUTOML_AWS_DEFAULT_REGION }}
-          AWS_S3_BUCKET: ${{ secrets.AUTOML_AWS_S3_BUCKET }}
-          RHOAI_TRAIN_DATA_BUCKET: ${{ secrets.AUTOML_RHOAI_TRAIN_DATA_BUCKET }}
-          RHOAI_TEST_ARTIFACTS_BUCKET: ${{ secrets.AUTOML_RHOAI_TEST_ARTIFACTS_BUCKET }}
-          RHOAI_TRAIN_S3_SECRET_NAME: ${{ secrets.AUTOML_RHOAI_TRAIN_S3_SECRET_NAME }}
+          RHOAI_URL: ${{ secrets.RHOAI_URL }}
+          RHOAI_TOKEN: ${{ secrets.RHOAI_TOKEN }}
+          RHOAI_PROJECT_NAME: ${{ secrets.RHOAI_PROJECT_NAME }}
+          KFP_VERIFY_SSL: ${{ vars.KFP_VERIFY_SSL }}
+          AWS_S3_ENDPOINT: ${{ secrets.AWS_S3_ENDPOINT }}
+          AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          AWS_DEFAULT_REGION: ${{ secrets.AWS_DEFAULT_REGION }}
+          AWS_S3_BUCKET: ${{ secrets.AWS_S3_BUCKET }}
+          RHOAI_TRAIN_DATA_BUCKET: ${{ secrets.RHOAI_TRAIN_DATA_BUCKET }}
+          RHOAI_TEST_ARTIFACTS_BUCKET: ${{ secrets.RHOAI_TEST_ARTIFACTS_BUCKET }}
+          RHOAI_TRAIN_S3_SECRET_NAME: ${{ secrets.RHOAI_TRAIN_S3_SECRET_NAME }}
         run: |
           cat > autox-ci/autox_tests/.env.ml << EOF
           RHOAI_URL=${RHOAI_URL}
