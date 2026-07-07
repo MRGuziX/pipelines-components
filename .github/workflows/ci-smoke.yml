@@ -224,7 +224,7 @@ jobs:
 
       - uses: actions/checkout@v4
 
-      - name: Get image digest
+      - name: Get image digest - blabla
         id: digest
         run: |
           SHA=${{ github.event.pull_request.head.sha }}
