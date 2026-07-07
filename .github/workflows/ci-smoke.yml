@@ -1,7 +1,7 @@
 name: CI Smoke Tests
 
 on:
-  pull_request:
+  pull_request_target:
     types: [labeled, synchronize]
 
 concurrency:
@@ -90,6 +90,8 @@ jobs:
             core.setFailed('Timed out waiting for Konflux automl build (45 min)');
 
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
 
       - name: Get image digest
         id: digest
@@ -238,6 +240,8 @@ jobs:
             core.setFailed('Timed out waiting for Konflux autorag build (45 min)');
 
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
 
       - name: Get image digest - blabla
         id: digest
