@@ -139,7 +139,7 @@ jobs:
             fi
           done
 
-      - name: Write env file from secrets
+      - name: Write env file from secretss
         env:
           RHOAI_URL: ${{ secrets.RHOAI_URL }}
           RHOAI_TOKEN: ${{ secrets.RHOAI_TOKEN }}
