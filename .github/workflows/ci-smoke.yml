@@ -124,6 +124,21 @@ jobs:
         working-directory: autox-ci
         run: uv sync --extra test_automl
 
+      - name: Debug secrets access
+        env:
+          TEST_URL: ${{ secrets.RHOAI_URL }}
+          TEST_TOKEN: ${{ secrets.RHOAI_TOKEN }}
+          TEST_S3: ${{ secrets.AWS_S3_ENDPOINT }}
+        run: |
+          for var in TEST_URL TEST_TOKEN TEST_S3; do
+            val="${!var}"
+            if [ -z "$val" ]; then
+              echo "::warning::${var} is EMPTY — secret not accessible"
+            else
+              echo "${var} is set (length: ${#val})"
+            fi
+          done
+
       - name: Write env file from secrets
         env:
           RHOAI_URL: ${{ secrets.RHOAI_URL }}
