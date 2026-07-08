@@ -18,13 +18,13 @@ Discovers documents from object storage, extracts text, and indexes chunks into 
 | `input_data_secret_name` | `str` | `None` | Name of the secret with S3 credentials for input data ("AWS_ACCESS_KEY_ID", "AWS_SECRET_ACCESS_KEY", "AWS_S3_ENDPOINT", "AWS_DEFAULT_REGION"). |
 | `input_data_bucket_name` | `str` | `None` | Name of the S3 bucket containing input data. |
 | `input_data_key` | `Optional[str]` | `None` | Path to folder with input documents within bucket. |
-| `collection_name` | `str` | `None` | Optional name of the collection to reuse; omit to create a new one. |
+| `vector_store_id` | `str` | `None` | OGX vector store / collection id to reuse (aligned with ``pattern.json`` ``settings.vector_store_binding.vector_store_id``). Omit to create a new collection. |
 | `embedding_params` | `Optional[dict]` | `None` | Dict passed to OGXEmbeddingParams (default: {}). |
 | `distance_metric` | `str` | `cosine` | Vector distance metric (e.g. "cosine"). |
 | `chunking_method` | `str` | `recursive` | Chunking method (e.g. "recursive"). |
 | `chunk_size` | `int` | `1024` | Chunk size in characters. |
 | `chunk_overlap` | `int` | `0` | Chunk overlap in characters. |
-| `batch_size` | `int` | `20` | Number of documents per batch (0 = process all at once). |
+| `batch_size` | `int` | `20` | Number of documents per batch. Defaults to ``20``; ``0`` processes all documents in a single batch. |
 
 ## Metadata 🗂️
 

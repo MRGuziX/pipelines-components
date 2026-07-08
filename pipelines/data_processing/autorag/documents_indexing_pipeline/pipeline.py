@@ -29,7 +29,7 @@ def documents_indexing_pipeline(
     input_data_secret_name: str,
     input_data_bucket_name: str,
     input_data_key: Optional[str] = None,
-    collection_name: str = None,
+    vector_store_id: str = None,
     embedding_params: Optional[dict] = None,
     distance_metric: str = "cosine",
     chunking_method: str = "recursive",
@@ -52,13 +52,16 @@ def documents_indexing_pipeline(
             ("AWS_ACCESS_KEY_ID", "AWS_SECRET_ACCESS_KEY", "AWS_S3_ENDPOINT", "AWS_DEFAULT_REGION").
         input_data_bucket_name: Name of the S3 bucket containing input data.
         input_data_key: Path to folder with input documents within bucket.
-        collection_name: Optional name of the collection to reuse; omit to create a new one.
+        vector_store_id: OGX vector store / collection id to reuse (aligned with
+            ``pattern.json`` ``settings.vector_store_binding.vector_store_id``).
+            Omit to create a new collection.
         embedding_params: Dict passed to OGXEmbeddingParams (default: {}).
         distance_metric: Vector distance metric (e.g. "cosine").
         chunking_method: Chunking method (e.g. "recursive").
         chunk_size: Chunk size in characters.
         chunk_overlap: Chunk overlap in characters.
-        batch_size: Number of documents per batch (0 = process all at once).
+        batch_size: Number of documents per batch. Defaults to ``20``; ``0`` processes all
+            documents in a single batch.
     """
     documents_discovery_task = documents_discovery(
         input_data_bucket_name=input_data_bucket_name,
@@ -87,7 +90,7 @@ def documents_indexing_pipeline(
         chunk_size=chunk_size,
         chunk_overlap=chunk_overlap,
         batch_size=batch_size,
-        collection_name=collection_name,
+        vector_store_id=vector_store_id,
     )
     documents_indexing_task.set_caching_options(False)
     documents_indexing_task.set_cpu_request("2").set_memory_request("8Gi").set_cpu_limit(MAX_CPUS).set_memory_limit(
