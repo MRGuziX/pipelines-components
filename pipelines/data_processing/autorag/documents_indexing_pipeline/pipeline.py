@@ -9,14 +9,17 @@ from kfp_components.components.data_processing.autorag.text_extraction.component
 MAX_CPUS = "32"
 MAX_MEMORY = "64Gi"
 
+# Must match metadata.yaml ``name`` (and managed-pipelines catalog when registered).
+PIPELINE_NAME = "documents-indexing-pipeline"
+
 
 @dsl.pipeline(
-    name="AutoRAG Documents Indexing Pipeline",
+    name=PIPELINE_NAME,
     description=(
-        "AutoRAG pipeline for preparing a high-quality knowledge base for accurate RAG retrieval. It "
-        "transforms unstructured documents into optimized vector indexes for semantic search and downstream "
-        "RAG workflows. Delivers production-grade embeddings, flexible indexing controls, and a reliable "
-        "foundation for scalable RAG applications."
+        "AutoRAG pipeline for building a production vector index from your documents. Powered by ai4rag, "
+        "it discovers documents, extracts text, and indexes chunks into OGX using settings from an optimized "
+        "RAG pattern. Delivers a named collection, indexing artifacts, and component status for Dashboard "
+        "deploy."
     ),
 )
 def documents_indexing_pipeline(
@@ -34,7 +37,11 @@ def documents_indexing_pipeline(
     chunk_overlap: int = 0,
     batch_size: int = 20,
 ):
-    """Defines a pipeline to load, sample, extract text, and index documents for AutoRAG.
+    """Build a production vector index from documents for AutoRAG.
+
+    Discovers documents from object storage, extracts text, and indexes chunks into OGX.
+    Intended for post-optimization deploy when applying an optimized RAG pattern's indexing
+    settings to a production corpus.
 
     Args:
         ogx_secret_name: Name of the secret with OGX credentials

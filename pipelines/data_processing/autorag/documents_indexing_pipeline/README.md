@@ -1,10 +1,12 @@
-# Autorag Documents Indexing ✨
+# Documents Indexing Pipeline ✨
 
 > ⚠️ **Stability: alpha** — This asset is not yet stable and may change.
 
 ## Overview 🧾
 
-Defines a pipeline to load, sample, extract text, and index documents for AutoRAG.
+Build a production vector index from documents for AutoRAG.
+
+Discovers documents from object storage, extracts text, and indexes chunks into OGX. Intended for post-optimization deploy when applying an optimized RAG pattern's indexing settings to a production corpus.
 
 ## Inputs 📥
 
@@ -26,7 +28,7 @@ Defines a pipeline to load, sample, extract text, and index documents for AutoRA
 
 ## Metadata 🗂️
 
-- **Name**: autorag-documents-indexing
+- **Name**: documents-indexing-pipeline
 - **Stability**: alpha
 - **Dependencies**:
   - Kubeflow:
