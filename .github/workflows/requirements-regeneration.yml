@@ -57,6 +57,10 @@ jobs:
       - name: Install yq
         run: sudo apt-get update && sudo apt-get install -y yq
 
+      - name: Make pipeline directories writable for rootless Podman
+        run: |
+          find pipelines -name requirements.in -execdir chmod a+rw . requirements.txt \; 2>/dev/null || true
+
       - name: Refresh pipeline requirements
         run: |
           uv run python -m scripts.refresh_pipeline_requirements.refresh_pipeline_requirements
