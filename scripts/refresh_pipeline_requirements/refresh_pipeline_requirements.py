@@ -2,8 +2,8 @@
 """Refresh Hermeto-compatible requirements.txt lockfiles for RHOAI pipelines.
 
 Compiles ``requirements.in`` into ``requirements.txt`` using ``pip-compile``
-with ``--generate-hashes`` inside a Podman container. The RHOAI PyPI index
-does not publish macOS-compatible wheels, so compilation must run on Linux
+with ``--generate-hashes`` inside a container (Podman or Docker). The RHOAI PyPI
+index does not publish macOS-compatible wheels, so compilation must run on Linux
 (UBI9 Python 3.12).
 
 See: https://hermetoproject.github.io/hermeto/pip/#requirementstxt
@@ -12,11 +12,14 @@ See: https://hermetoproject.github.io/hermeto/pip/#requirementstxt
 from __future__ import annotations
 
 import argparse
+import os
 import re
+import shutil
 import subprocess
 import sys
 from collections.abc import Sequence
 from pathlib import Path
+from urllib.parse import urlsplit, urlunsplit
 
 from ..lib.discovery import get_repo_root
 
@@ -25,6 +28,8 @@ DEFAULT_PIPELINES: tuple[str, ...] = (
     "pipelines/training/automl/autogluon_tabular_training_pipeline",
     "pipelines/training/autorag/documents_rag_optimization_pipeline",
 )
+SUPPORTED_RUNTIMES: tuple[str, ...] = ("podman", "docker")
+_CONTAINER_RUNTIME_ENV = "CONTAINER_RUNTIME"
 
 _INDEX_URL_RE = re.compile(r"^--index-url\s+(\S+)", re.MULTILINE)
 _REQUIREMENTS_IN = "requirements.in"
@@ -42,6 +47,18 @@ def read_index_url(requirements_in: Path) -> str | None:
     return match.group(1) if match else None
 
 
+def sanitize_index_url_for_log(url: str) -> str:
+    """Return a log-safe index URL with embedded credentials removed."""
+    parts = urlsplit(url)
+    if parts.username is None and parts.password is None:
+        return url
+
+    host = parts.hostname or ""
+    if parts.port is not None:
+        host = f"{host}:{parts.port}"
+    return urlunsplit((parts.scheme, host, parts.path, parts.query, parts.fragment))
+
+
 def resolve_pipeline_dir(repo_root: Path, pipeline: str | Path) -> Path:
     """Resolve a pipeline directory and validate required input files exist."""
     pipeline_dir = Path(pipeline)
@@ -55,17 +72,62 @@ def resolve_pipeline_dir(repo_root: Path, pipeline: str | Path) -> Path:
     return pipeline_dir.resolve()
 
 
-def build_podman_command(
+def _require_runtime(runtime: str) -> str:
+    """Validate and return a supported container runtime available on PATH."""
+    if runtime not in SUPPORTED_RUNTIMES:
+        supported = ", ".join(SUPPORTED_RUNTIMES)
+        raise RefreshRequirementsError(f"Unsupported container runtime: {runtime} (supported: {supported})")
+    if shutil.which(runtime) is None:
+        raise RefreshRequirementsError(f"Container runtime not found on PATH: {runtime}")
+    return runtime
+
+
+def resolve_container_runtime(runtime: str | None = None) -> str:
+    """Resolve the container runtime from CLI, environment, or auto-detection.
+
+    Priority:
+    1. Explicit ``runtime`` argument (for example ``--runtime docker``)
+    2. ``CONTAINER_RUNTIME`` environment variable
+    3. Auto-detect: podman, then docker
+    """
+    if runtime is not None:
+        return _require_runtime(runtime)
+
+    env_runtime = os.environ.get(_CONTAINER_RUNTIME_ENV)
+    if env_runtime is not None:
+        return _require_runtime(env_runtime)
+
+    for candidate in SUPPORTED_RUNTIMES:
+        if shutil.which(candidate) is not None:
+            return candidate
+
+    supported = ", ".join(SUPPORTED_RUNTIMES)
+    raise RefreshRequirementsError(
+        f"No supported container runtime found on PATH (tried: {supported}). Install Podman or Docker."
+    )
+
+
+def build_volume_mount(pipeline_dir: Path, runtime: str) -> str:
+    """Build a container volume mount string for the pipeline directory."""
+    mount = f"{pipeline_dir}:{pipeline_dir}"
+    if runtime == "podman" and Path("/sys/fs/selinux").is_dir():
+        mount += ":z"
+    return mount
+
+
+def build_container_command(
     *,
+    runtime: str,
     container_image: str,
     pipeline_dir: Path,
     upgrade: bool,
     dry_run: bool,
     verbose: bool,
 ) -> list[str]:
-    """Build the Podman command that runs pip-compile in the container."""
+    """Build the container command that runs pip-compile."""
+    python_bin = "python3 -u" if verbose else "python3"
     compile_flags = [
-        "pip-compile",
+        f"{python_bin} -m piptools compile",
         _REQUIREMENTS_IN,
         "--generate-hashes",
         "--emit-index-url",
@@ -80,21 +142,21 @@ def build_podman_command(
     if verbose:
         compile_flags.append("-v")
 
-    pip_install = "python3 -m pip install pip-tools" if verbose else "python3 -m pip install --quiet pip-tools"
+    pip_install = (
+        f"{python_bin} -m pip install pip-tools" if verbose else f"{python_bin} -m pip install --quiet pip-tools"
+    )
     compile_command = " ".join([pip_install, "&&", " ".join(compile_flags)])
 
     command = [
-        "podman",
+        runtime,
         "run",
         "--rm",
         "-v",
-        f"{pipeline_dir}:{pipeline_dir}:z",
+        build_volume_mount(pipeline_dir, runtime),
         "-w",
         str(pipeline_dir),
     ]
-    if verbose:
-        command.extend(["-e", "PYTHONUNBUFFERED=1"])
-    command.extend([container_image, "bash", "-lc", compile_command])
+    command.extend([container_image, "/bin/bash", "-lc", compile_command])
     return command
 
 
@@ -102,7 +164,8 @@ def compile_pipeline_requirements(
     pipeline_dir: Path,
     *,
     container_image: str = DEFAULT_CONTAINER_IMAGE,
-    upgrade: bool = False,
+    container_runtime: str | None = None,
+    upgrade: bool = True,
     dry_run: bool = False,
     verbose: bool = True,
 ) -> None:
@@ -112,7 +175,9 @@ def compile_pipeline_requirements(
     if index_url is None:
         raise RefreshRequirementsError(f"{requirements_in} must declare --index-url for RHOAI package resolution")
 
-    command = build_podman_command(
+    runtime = resolve_container_runtime(container_runtime)
+    command = build_container_command(
+        runtime=runtime,
         container_image=container_image,
         pipeline_dir=pipeline_dir,
         upgrade=upgrade,
@@ -121,9 +186,10 @@ def compile_pipeline_requirements(
     )
 
     print(f"Refreshing {pipeline_dir / _REQUIREMENTS_TXT}")
-    print(f"  index-url: {index_url}")
+    print(f"  index-url: {sanitize_index_url_for_log(index_url)}")
+    print(f"  runtime: {runtime}")
     print(f"  image: {container_image}")
-    subprocess.run(command, check=True)
+    subprocess.run(command, check=True, timeout=1800)
 
 
 def refresh_pipeline_requirements(
@@ -131,7 +197,8 @@ def refresh_pipeline_requirements(
     *,
     repo_root: Path | None = None,
     container_image: str = DEFAULT_CONTAINER_IMAGE,
-    upgrade: bool = False,
+    container_runtime: str | None = None,
+    upgrade: bool = True,
     dry_run: bool = False,
     verbose: bool = True,
 ) -> None:
@@ -144,6 +211,7 @@ def refresh_pipeline_requirements(
         compile_pipeline_requirements(
             pipeline_dir,
             container_image=container_image,
+            container_runtime=container_runtime,
             upgrade=upgrade,
             dry_run=dry_run,
             verbose=verbose,
@@ -153,7 +221,8 @@ def refresh_pipeline_requirements(
 def _parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(
         description=(
-            "Refresh Hermeto-compatible requirements.txt lockfiles for RHOAI pipelines using pip-compile in Podman"
+            "Refresh Hermeto-compatible requirements.txt lockfiles for RHOAI pipelines "
+            "using pip-compile in Podman or Docker"
         ),
     )
     parser.add_argument(
@@ -164,12 +233,17 @@ def _parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
     parser.add_argument(
         "--image",
         default=DEFAULT_CONTAINER_IMAGE,
-        help=f"Podman image to run pip-compile in (default: {DEFAULT_CONTAINER_IMAGE})",
+        help=f"Container image to run pip-compile in (default: {DEFAULT_CONTAINER_IMAGE})",
     )
     parser.add_argument(
-        "--upgrade",
+        "--runtime",
+        choices=SUPPORTED_RUNTIMES,
+        help=("Container runtime to use (default: $CONTAINER_RUNTIME, otherwise auto-detect podman then docker)"),
+    )
+    parser.add_argument(
+        "--no-upgrade",
         action="store_true",
-        help="Upgrade all dependencies instead of only adding new ones",
+        help="Keep existing pins from requirements.txt when possible instead of upgrading all dependencies",
     )
     parser.add_argument(
         "--dry-run",
@@ -193,7 +267,8 @@ def main(argv: Sequence[str] | None = None) -> int:
         refresh_pipeline_requirements(
             pipelines,
             container_image=args.image,
-            upgrade=args.upgrade,
+            container_runtime=args.runtime,
+            upgrade=not args.no_upgrade,
             dry_run=args.dry_run,
             verbose=not args.quiet,
         )

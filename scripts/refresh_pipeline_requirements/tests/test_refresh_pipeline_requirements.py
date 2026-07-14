@@ -7,11 +7,14 @@ import pytest
 
 from ..refresh_pipeline_requirements import (
     RefreshRequirementsError,
-    build_podman_command,
+    build_container_command,
+    build_volume_mount,
     compile_pipeline_requirements,
     read_index_url,
     refresh_pipeline_requirements,
+    resolve_container_runtime,
     resolve_pipeline_dir,
+    sanitize_index_url_for_log,
 )
 
 
@@ -44,6 +47,28 @@ class TestReadIndexUrl:
         assert read_index_url(requirements_in) is None
 
 
+class TestSanitizeIndexUrlForLog:
+    """Tests for sanitize_index_url_for_log."""
+
+    def test_returns_url_unchanged_without_credentials(self):
+        """Leaves credential-free URLs unchanged."""
+        url = "https://console.redhat.com/api/pypi/public-rhai/rhoai/3.5/cpu-ubi9-test/simple"
+
+        assert sanitize_index_url_for_log(url) == url
+
+    def test_strips_embedded_userinfo(self):
+        """Removes username and password from the logged URL."""
+        url = "https://user:secret@example.com/simple"
+
+        assert sanitize_index_url_for_log(url) == "https://example.com/simple"
+
+    def test_strips_userinfo_and_preserves_port(self):
+        """Removes credentials while preserving an explicit port."""
+        url = "https://user:secret@example.com:8443/simple?foo=bar"
+
+        assert sanitize_index_url_for_log(url) == "https://example.com:8443/simple?foo=bar"
+
+
 class TestResolvePipelineDir:
     """Tests for resolve_pipeline_dir."""
 
@@ -65,15 +90,110 @@ class TestResolvePipelineDir:
             resolve_pipeline_dir(tmp_path, pipeline_dir)
 
 
-class TestBuildPodmanCommand:
-    """Tests for build_podman_command."""
+class TestResolveContainerRuntime:
+    """Tests for resolve_container_runtime."""
+
+    def test_uses_explicit_runtime(self):
+        """Returns the runtime requested on the command line."""
+        with mock.patch("shutil.which", return_value="/usr/bin/docker"):
+            assert resolve_container_runtime("docker") == "docker"
+
+    def test_uses_environment_variable(self):
+        """Returns the runtime from CONTAINER_RUNTIME when set."""
+        with (
+            mock.patch.dict("os.environ", {"CONTAINER_RUNTIME": "docker"}),
+            mock.patch("shutil.which", return_value="/usr/bin/docker"),
+        ):
+            assert resolve_container_runtime() == "docker"
+
+    def test_prefers_podman_when_auto_detecting(self):
+        """Auto-detects podman before docker when both are available."""
+        with mock.patch(
+            "shutil.which",
+            side_effect=lambda name: f"/usr/bin/{name}" if name in {"podman", "docker"} else None,
+        ):
+            assert resolve_container_runtime() == "podman"
+
+    def test_falls_back_to_docker_when_podman_missing(self):
+        """Auto-detects docker when podman is unavailable."""
+        with mock.patch("shutil.which", side_effect=lambda name: "/usr/bin/docker" if name == "docker" else None):
+            assert resolve_container_runtime() == "docker"
+
+    def test_raises_when_runtime_missing_on_path(self):
+        """Raises when an explicit runtime is not installed."""
+        with mock.patch("shutil.which", return_value=None):
+            with pytest.raises(RefreshRequirementsError, match="not found on PATH"):
+                resolve_container_runtime("docker")
+
+    def test_raises_when_no_runtime_available(self):
+        """Raises when auto-detection finds no supported runtime."""
+        with mock.patch("shutil.which", return_value=None):
+            with pytest.raises(RefreshRequirementsError, match="No supported container runtime found"):
+                resolve_container_runtime()
+
+
+class TestBuildVolumeMount:
+    """Tests for build_volume_mount."""
+
+    def test_adds_selinux_label_for_podman_on_selinux_hosts(self, tmp_path: Path):
+        """Adds :z to Podman mounts on SELinux-enabled hosts."""
+        pipeline_dir = tmp_path / "pipeline"
+        pipeline_dir.mkdir()
+
+        with mock.patch("pathlib.Path.is_dir", return_value=True):
+            mount = build_volume_mount(pipeline_dir.resolve(), "podman")
+
+        assert mount == f"{pipeline_dir.resolve()}:{pipeline_dir.resolve()}:z"
+
+    def test_omits_selinux_label_for_docker(self, tmp_path: Path):
+        """Uses a plain bind mount for Docker."""
+        pipeline_dir = tmp_path / "pipeline"
+        pipeline_dir.mkdir()
+
+        mount = build_volume_mount(pipeline_dir.resolve(), "docker")
+
+        assert mount == f"{pipeline_dir.resolve()}:{pipeline_dir.resolve()}"
+
+
+class TestBuildContainerCommand:
+    """Tests for build_container_command."""
 
     def test_builds_expected_podman_command(self, tmp_path: Path):
         """Builds a verbose Podman command with Hermeto-compatible pip-compile flags."""
         pipeline_dir = tmp_path / "pipeline"
         _write_requirements_in(pipeline_dir)
 
-        command = build_podman_command(
+        command = build_container_command(
+            runtime="podman",
+            container_image="registry.example.com/ubi9/python-312:9.8",
+            pipeline_dir=pipeline_dir.resolve(),
+            upgrade=True,
+            dry_run=False,
+            verbose=True,
+        )
+
+        assert command[0] == "podman"
+        assert "/bin/bash" in command
+        assert "-lc" in command
+        compile_command = command[command.index("-lc") + 1]
+        assert "python3 -u -m piptools compile requirements.in" in compile_command
+        assert "python3 -u -m pip install pip-tools" in compile_command
+        assert "--generate-hashes" in compile_command
+        assert "--allow-unsafe" in compile_command
+        assert "--no-header" in compile_command
+        assert " -v" in compile_command
+        assert "--upgrade" in compile_command
+        assert "--output-file requirements.txt" in compile_command
+        assert "--dry-run" not in compile_command
+        assert "--quiet" not in compile_command
+
+    def test_no_upgrade_omits_upgrade_flag(self, tmp_path: Path):
+        """Omits --upgrade when upgrade is disabled."""
+        pipeline_dir = tmp_path / "pipeline"
+        _write_requirements_in(pipeline_dir)
+
+        command = build_container_command(
+            runtime="podman",
             container_image="registry.example.com/ubi9/python-312:9.8",
             pipeline_dir=pipeline_dir.resolve(),
             upgrade=False,
@@ -81,27 +201,34 @@ class TestBuildPodmanCommand:
             verbose=True,
         )
 
-        assert command[0] == "podman"
-        assert "PYTHONUNBUFFERED=1" in command
-        assert "bash" in command
-        assert "-lc" in command
         compile_command = command[command.index("-lc") + 1]
-        assert "pip-compile requirements.in" in compile_command
-        assert "--generate-hashes" in compile_command
-        assert "--allow-unsafe" in compile_command
-        assert "--no-header" in compile_command
-        assert " -v" in compile_command
-        assert "--output-file requirements.txt" in compile_command
         assert "--upgrade" not in compile_command
-        assert "--dry-run" not in compile_command
-        assert "--quiet" not in compile_command
+
+    def test_builds_expected_docker_command(self, tmp_path: Path):
+        """Builds a Docker command without SELinux volume labels."""
+        pipeline_dir = tmp_path / "pipeline"
+        _write_requirements_in(pipeline_dir)
+
+        command = build_container_command(
+            runtime="docker",
+            container_image="registry.example.com/ubi9/python-312:9.8",
+            pipeline_dir=pipeline_dir.resolve(),
+            upgrade=False,
+            dry_run=False,
+            verbose=False,
+        )
+
+        volume_mount = command[command.index("-v") + 1]
+        assert command[0] == "docker"
+        assert volume_mount == f"{pipeline_dir.resolve()}:{pipeline_dir.resolve()}"
 
     def test_quiet_mode_omits_verbose_flags(self, tmp_path: Path):
         """Omits verbose flags when quiet mode is requested."""
         pipeline_dir = tmp_path / "pipeline"
         _write_requirements_in(pipeline_dir)
 
-        command = build_podman_command(
+        command = build_container_command(
+            runtime="podman",
             container_image="registry.example.com/ubi9/python-312:9.8",
             pipeline_dir=pipeline_dir.resolve(),
             upgrade=False,
@@ -112,14 +239,16 @@ class TestBuildPodmanCommand:
         compile_command = command[command.index("-lc") + 1]
         assert " -v" not in compile_command
         assert "--quiet" in compile_command
-        assert "PYTHONUNBUFFERED=1" not in command
+        assert "python3 -u" not in compile_command
+        assert "python3 -m piptools compile requirements.in" in compile_command
 
     def test_includes_upgrade_and_dry_run_flags(self, tmp_path: Path):
         """Passes upgrade and dry-run flags through to pip-compile."""
         pipeline_dir = tmp_path / "pipeline"
         _write_requirements_in(pipeline_dir)
 
-        command = build_podman_command(
+        command = build_container_command(
+            runtime="podman",
             container_image="registry.example.com/ubi9/python-312:9.8",
             pipeline_dir=pipeline_dir.resolve(),
             upgrade=True,
@@ -134,18 +263,28 @@ class TestBuildPodmanCommand:
 class TestCompilePipelineRequirements:
     """Tests for compile_pipeline_requirements."""
 
-    def test_runs_podman_compile(self, tmp_path: Path):
-        """Invokes Podman to run pip-compile for a valid pipeline directory."""
+    def test_runs_container_compile(self, tmp_path: Path):
+        """Invokes the container runtime to run pip-compile for a valid pipeline directory."""
         pipeline_dir = tmp_path / "pipeline"
-        _write_requirements_in(pipeline_dir)
+        _write_requirements_in(pipeline_dir, index_url="https://user:secret@example.com/simple")
 
-        with mock.patch("subprocess.run") as run_mock:
-            compile_pipeline_requirements(pipeline_dir)
+        with (
+            mock.patch(
+                "scripts.refresh_pipeline_requirements.refresh_pipeline_requirements.resolve_container_runtime",
+                return_value="docker",
+            ),
+            mock.patch("subprocess.run") as run_mock,
+            mock.patch("builtins.print") as print_mock,
+        ):
+            compile_pipeline_requirements(pipeline_dir, container_runtime="docker")
 
         run_mock.assert_called_once()
         command = run_mock.call_args.args[0]
-        assert command[0] == "podman"
-        assert "pip-compile requirements.in" in command[-1]
+        assert command[0] == "docker"
+        assert "python3 -u -m piptools compile requirements.in" in command[-1]
+        printed = " ".join(str(call.args[0]) for call in print_mock.call_args_list)
+        assert "user:secret" not in printed
+        assert "https://example.com/simple" in printed
 
     def test_requires_index_url(self, tmp_path: Path):
         """Raises when requirements.in does not declare an index URL."""
@@ -154,7 +293,7 @@ class TestCompilePipelineRequirements:
         (pipeline_dir / "requirements.in").write_text("requests\n", encoding="utf-8")
 
         with pytest.raises(RefreshRequirementsError, match="must declare --index-url"):
-            compile_pipeline_requirements(pipeline_dir)
+            compile_pipeline_requirements(pipeline_dir, container_runtime="podman")
 
 
 class TestRefreshPipelineRequirements:
