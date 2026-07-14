@@ -62,8 +62,7 @@ jobs:
           find pipelines -name requirements.in -execdir chmod a+rw . requirements.txt \; 2>/dev/null || true
 
       - name: Refresh pipeline requirements
-        run: |
-          uv run python -m scripts.refresh_pipeline_requirements.refresh_pipeline_requirements
+        run: make pipeline-requirements
 
       - name: Regenerate root requirements
         run: make requirements
@@ -79,7 +78,7 @@ jobs:
             echo "reviewers=" >> "$GITHUB_OUTPUT"
             exit 0
           fi
-          reviewers="$(yq -r '.reviewers // [] | join(",")' OWNERS)"
+          reviewers="$(yq -r '(.reviewers // .approvers // []) | join(",")' OWNERS)"
           echo "reviewers=${reviewers}" >> "$GITHUB_OUTPUT"
 
       - name: Create or update Pull Request
