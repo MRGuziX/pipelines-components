@@ -51,23 +51,23 @@ class TestReadIndexUrl:
 class TestSanitizeIndexUrlForLog:
     """Tests for sanitize_index_url_for_log."""
 
-    def test_returns_url_unchanged_without_credentials(self):
-        """Leaves credential-free URLs unchanged."""
+    def test_strips_path_and_query_without_credentials(self):
+        """Removes path and query from credential-free URLs."""
         url = "https://console.redhat.com/api/pypi/public-rhai/rhoai/3.5/cpu-ubi9-test/simple"
 
-        assert sanitize_index_url_for_log(url) == url
+        assert sanitize_index_url_for_log(url) == "https://console.redhat.com"
 
     def test_strips_embedded_userinfo(self):
         """Removes username and password from the logged URL."""
         url = "https://user:secret@example.com/simple"
 
-        assert sanitize_index_url_for_log(url) == "https://example.com/simple"
+        assert sanitize_index_url_for_log(url) == "https://example.com"
 
     def test_strips_userinfo_and_preserves_port(self):
         """Removes credentials while preserving an explicit port."""
         url = "https://user:secret@example.com:8443/simple?foo=bar"
 
-        assert sanitize_index_url_for_log(url) == "https://example.com:8443/simple?foo=bar"
+        assert sanitize_index_url_for_log(url) == "https://example.com:8443"
 
 
 class TestResolvePipelineDir:
@@ -293,7 +293,7 @@ class TestCompilePipelineRequirements:
         assert "python3 -u -m piptools compile requirements.in" in command[-1]
         printed = " ".join(str(call.args[0]) for call in print_mock.call_args_list)
         assert "user:secret" not in printed
-        assert "https://example.com/simple" in printed
+        assert "https://example.com" in printed
 
     def test_requires_index_url(self, tmp_path: Path):
         """Raises when requirements.in does not declare an index URL."""

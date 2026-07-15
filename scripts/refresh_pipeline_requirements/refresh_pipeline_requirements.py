@@ -48,15 +48,12 @@ def read_index_url(requirements_in: Path) -> str | None:
 
 
 def sanitize_index_url_for_log(url: str) -> str:
-    """Return a log-safe index URL with embedded credentials removed."""
+    """Return a log-safe index URL with credentials, path, and query removed."""
     parts = urlsplit(url)
-    if parts.username is None and parts.password is None:
-        return url
-
     host = parts.hostname or ""
     if parts.port is not None:
         host = f"{host}:{parts.port}"
-    return urlunsplit((parts.scheme, host, parts.path, parts.query, parts.fragment))
+    return urlunsplit((parts.scheme, host, "", "", parts.fragment))
 
 
 def resolve_pipeline_dir(repo_root: Path, pipeline: str | Path) -> Path:

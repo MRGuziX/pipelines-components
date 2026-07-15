@@ -109,16 +109,17 @@ sync-packages:
 # Refresh Hermeto-compatible requirements.txt for RHOAI pipelines (requires Podman or Docker)
 # Usage: make pipeline-requirements [PIPELINE=path/to/pipeline] [RUNTIME=podman|docker] [IMAGE=...] [NO_UPGRADE=true] [DRY_RUN=true] [QUIET=true]
 pipeline-requirements:
-	@if [ -n "$(RUNTIME)" ] && [ "$(RUNTIME)" != "podman" ] && [ "$(RUNTIME)" != "docker" ]; then \
+	@export PIPELINE="$(PIPELINE)" IMAGE="$(IMAGE)" RUNTIME="$(RUNTIME)"; \
+	if [ -n "$$RUNTIME" ] && [ "$$RUNTIME" != "podman" ] && [ "$$RUNTIME" != "docker" ]; then \
 		echo "Error: RUNTIME must be podman or docker"; exit 1; \
-	fi
-	@$(UVRUN) python -m scripts.refresh_pipeline_requirements.refresh_pipeline_requirements \
+	fi; \
+	$(UVRUN) python -m scripts.refresh_pipeline_requirements.refresh_pipeline_requirements \
 		$(if $(filter true,$(NO_UPGRADE)),--no-upgrade,) \
 		$(if $(filter true,$(DRY_RUN)),--dry-run,) \
 		$(if $(filter true,$(QUIET)),--quiet,) \
-		$(if $(RUNTIME),--runtime "$(RUNTIME)",) \
-		$(if $(IMAGE),--image "$(IMAGE)",) \
-		$(PIPELINE)
+		$${RUNTIME:+--runtime "$$RUNTIME"} \
+		$${IMAGE:+--image "$$IMAGE"} \
+		$${PIPELINE:+"$$PIPELINE"}
 
 AIPCC_INDEX_URL := https://console.redhat.com/api/pypi/public-rhai/rhoai/3.4/cpu-ubi9/simple
 
