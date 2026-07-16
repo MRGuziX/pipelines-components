@@ -64,9 +64,6 @@ jobs:
       - name: Refresh pipeline requirements
         run: make pipeline-requirements
 
-      - name: Regenerate root requirements
-        run: make requirements
-
       - name: Fix ownership of generated files
         run: sudo chown -R "$USER:$USER" .
 
@@ -88,22 +85,18 @@ jobs:
           base: ${{ env.BASE_BRANCH }}
           branch: requirements/regenerate-${{ env.BASE_BRANCH }}
           delete-branch: true
-          commit-message: 'chore: regenerate pinned requirements'
-          title: 'chore: regenerate pinned requirements'
+          commit-message: 'chore(pipelines): regenerate requirements.txt lockfiles for AutoML and AutoRAG pipelines'
+          title: 'chore(pipelines): regenerate requirements.txt lockfiles for AutoML and AutoRAG pipelines'
           body: |
             ## Description
-            Regenerated requirements lockfiles by running `pip-compile` inside a UBI9
-            container for pipeline-specific dependencies and `uv pip compile` for root
-            dependencies, both resolving against the AIPCC PyPI index.
+            Regenerated pipeline requirements lockfiles by running `pip-compile`
+            inside a UBI9 container, resolving against the AIPCC PyPI index.
 
             ## Changes
             - Pipeline `requirements.txt` files (compiled from `requirements.in`)
-            - Root `requirements.txt` and `requirements-build.txt` (compiled from `pyproject.toml`)
 
             Triggered by **Actions → Requirements Regeneration** (manual or every 12 hours).
           add-paths: |
-            requirements.txt
-            requirements-build.txt
             pipelines/
           reviewers: >-
             ${{
