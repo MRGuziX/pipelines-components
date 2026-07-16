@@ -158,7 +158,6 @@ def documents_rag_optimization_pipeline(
         extracted_text=text_extraction_task.outputs["extracted_text"],
         embedding_models=embedding_models,
         generation_models=generation_models,
-        metric=optimization_metric,
         preset=preset,
     )
 
