@@ -33,7 +33,7 @@ jobs:
         run: |
           set -euo pipefail
           repo_url="https://github.com/${GITHUB_REPOSITORY}.git"
-          if ! git ls-remote --heads "$repo_url" "$BASE_BRANCH" | grep -q .; then
+          if ! git ls-remote --heads "$repo_url" -- "$BASE_BRANCH" | grep -q .; then
             echo "Base branch '$BASE_BRANCH' not found in ${GITHUB_REPOSITORY}."
             echo "Use an existing branch name for workflow_dispatch input 'branch'."
             exit 1
