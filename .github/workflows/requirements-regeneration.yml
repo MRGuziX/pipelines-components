@@ -97,7 +97,7 @@ jobs:
 
             Triggered by **Actions → Requirements Regeneration** (manual or every 12 hours).
           add-paths: |
-            pipelines/
+            pipelines/**/requirements.txt
           reviewers: >-
             ${{
               github.repository == 'opendatahub-io/pipelines-components'
