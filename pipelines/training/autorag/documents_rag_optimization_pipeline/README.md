@@ -142,7 +142,7 @@ RAG templates with optimal parameter values, which are referred to as RAG Patter
 
 - **RAG Type**: Documents (documents provided as input)
 - **Supported Languages**: English
-- **Supported Document Types**: PDF, DOCX, PPTX, Markdown, HTML, Plain text
+- **Supported Document Types**: PDF, DOCX, PPTX, Markdown (.md, .qmd, .Rmd), HTML (.html, .xhtml), Plain text, ODT, ODP, AsciiDoc, LaTeX, EPUB, EML
 - **Document Data Sources**: S3 (Amazon S3), Local filesystem (FS)
 
 ### Infrastructure Components
