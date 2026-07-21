@@ -388,3 +388,4 @@ tensorboard/
 # Exception: test data CSVs under tests/data/
 !**/tests/data/
 !**/tests/data/*.csv
+/tmp/
