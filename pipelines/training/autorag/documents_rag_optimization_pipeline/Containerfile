@@ -20,22 +20,16 @@ USER root
 RUN mkdir -p /opt/app-root/docling-artifacts/models && \
     printf '%s\n' \
       'application/epub+zip epub' \
-      'application/pdf pdf' \
       'application/vnd.openxmlformats-officedocument.wordprocessingml.document docx' \
       'application/vnd.openxmlformats-officedocument.presentationml.presentation pptx' \
       'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet xlsx' \
       'application/vnd.oasis.opendocument.text odt' \
       'application/vnd.oasis.opendocument.presentation odp' \
       'application/vnd.oasis.opendocument.spreadsheet ods' \
-      'text/html html htm xhtml' \
-      'text/plain txt text' \
-      'text/markdown md' \
-      'text/csv csv' \
-      'text/xml xml' \
-      'application/json json' \
-      'application/x-latex tex latex' \
-      'message/rfc822 eml' \
-      > /etc/mime.types && \
+      'application/xhtml+xml xhtml' \
+      'text/markdown qmd rmd Rmd' \
+      'text/asciidoc adoc asciidoc' \
+      >> /etc/mime.types && \
     SITE_DIR=$(python3 -c "import site; print(site.getsitepackages()[0])") && \
     printf 'import mimetypes\nmimetypes.init()\n' >> "$SITE_DIR/sitecustomize.py"
 COPY --from=docling-layout-modelcar \
