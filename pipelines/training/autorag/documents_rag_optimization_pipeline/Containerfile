@@ -17,7 +17,27 @@ RUN pip install --no-cache-dir -r /tmp/requirements.txt
 # Must match DOCLING_ARTIFACTS_PATH. Do not use /opt/docling-artifacts on aipcc: non-root RUN cannot mkdir there.
 ENV DOCLING_ARTIFACTS_PATH=/opt/app-root/docling-artifacts/models
 USER root
-RUN mkdir -p /opt/app-root/docling-artifacts/models
+RUN mkdir -p /opt/app-root/docling-artifacts/models && \
+    printf '%s\n' \
+      'application/epub+zip epub' \
+      'application/pdf pdf' \
+      'application/vnd.openxmlformats-officedocument.wordprocessingml.document docx' \
+      'application/vnd.openxmlformats-officedocument.presentationml.presentation pptx' \
+      'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet xlsx' \
+      'application/vnd.oasis.opendocument.text odt' \
+      'application/vnd.oasis.opendocument.presentation odp' \
+      'application/vnd.oasis.opendocument.spreadsheet ods' \
+      'text/html html htm xhtml' \
+      'text/plain txt text' \
+      'text/markdown md' \
+      'text/csv csv' \
+      'text/xml xml' \
+      'application/json json' \
+      'application/x-latex tex latex' \
+      'message/rfc822 eml' \
+      > /etc/mime.types && \
+    SITE_DIR=$(python3 -c "import site; print(site.getsitepackages()[0])") && \
+    printf 'import mimetypes\nmimetypes.init()\n' >> "$SITE_DIR/sitecustomize.py"
 COPY --from=docling-layout-modelcar \
      /models/ \
      /opt/app-root/docling-artifacts/models/docling-project--docling-layout-heron/
