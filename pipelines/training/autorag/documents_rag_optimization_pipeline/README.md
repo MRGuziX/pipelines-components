@@ -45,7 +45,7 @@ The system integrates with OGX API for inference and vector database operations,
     - Name: Milvus, Version: >=2.0.0
     - Name: Milvus Lite, Version: >=2.0.0
     - Name: MLFlow, Version: >=2.0.0
-    - Name: docling, Version: >=1.0.0
+    - Name: docling, Version: >=2.112.0
 - **Tags**:
   - training
   - pipeline

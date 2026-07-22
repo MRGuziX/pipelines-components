@@ -34,7 +34,7 @@ Discovers documents from object storage, extracts text, and indexes chunks into 
   - Kubeflow:
     - Name: Pipelines, Version: >=2.15.2
   - External Services:
-    - Name: docling, Version: >=2.72.0
+    - Name: docling, Version: >=2.112.0
     - Name: boto3, Version: >=1.42.34
     - Name: ai4rag, Version: ~=0.10.1
     - Name: RHOAI Connections API, Version: >=1.0.0
