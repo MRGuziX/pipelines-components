@@ -101,6 +101,7 @@ class TestSearchSpacePreparationUnitTests:
             chunk_sizes=[128, 256, 512],
             chunk_overlaps=[32, 64],
             inference_max_threads=10,
+            pre_validated_search_space=None,
         )
         mock_report.save_json.assert_called_once_with(str(tmp_path / "report.yml"))
 

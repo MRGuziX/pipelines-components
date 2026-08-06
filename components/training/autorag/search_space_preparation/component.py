@@ -18,6 +18,7 @@ def search_space_preparation(
     extracted_text: dsl.Input[dsl.Artifact],
     search_space_prep_report: dsl.Output[dsl.Artifact],
     embedded_artifact: dsl.EmbeddedInput[dsl.Dataset] = None,
+    validated_search_space: dsl.Input[dsl.Artifact] = None,
     embedding_models: Optional[List] = None,
     generation_models: Optional[List] = None,
     component_status: dsl.Output[dsl.Artifact] = None,
@@ -32,8 +33,12 @@ def search_space_preparation(
         test_data: Input artifact with benchmark questions and expected answers.
         extracted_text: Input artifact with extracted text documents.
         search_space_prep_report: Output artifact for the JSON search space report.
-        component_status: Output artifact containing stage-level progress tracking.
         embedded_artifact: Embedded ``autorag.shared`` helpers injected by KFP at runtime.
+        validated_search_space: Optional input artifact from a prior search_space_validation
+            step.  When provided, the pre-validated AI4RAGSearchSpace is reconstructed
+            from this JSON and passed to ``prepare_search_space_report`` so that OGX
+            model resolution is not repeated.
+        component_status: Output artifact containing stage-level progress tracking.
         embedding_models: List of embedding model identifiers to try.
         generation_models: List of generation model identifiers to try.
         preset: Pipeline quality tier. "speed" (default) uses recursive chunking
@@ -107,6 +112,32 @@ def search_space_preparation(
                 api_key=os.environ["OGX_CLIENT_API_KEY"],
             )
 
+            pre_validated_ss = None
+            if validated_search_space is not None:
+                import json
+
+                from ai4rag.components.optimization.rag_templates_optimization import (
+                    _deserialize_model,
+                )
+                from ai4rag.search_space.src.parameter import Parameter
+                from ai4rag.search_space.src.search_space import AI4RAGSearchSpace
+
+                vs_path = Path(validated_search_space.path)
+                if vs_path.exists():
+                    with open(vs_path, encoding="utf-8") as f:
+                        vs_data = json.load(f)
+                    params = []
+                    for param_name, values in vs_data.items():
+                        if param_name == "combination_count":
+                            continue
+                        if param_name == "foundation_model":
+                            values = [_deserialize_model(m, ogx_client) for m in values]
+                        elif param_name == "embedding_model":
+                            values = [_deserialize_model(m, ogx_client) for m in values]
+                        params.append(Parameter(param_name, "C", values=values))
+                    pre_validated_ss = AI4RAGSearchSpace(params=params)
+                    logging.info("Using pre-validated search space from upstream validation step.")
+
             report = prepare_search_space_report(
                 test_data_path=test_data.path,
                 extracted_text_path=extracted_text.path,
@@ -117,6 +148,7 @@ def search_space_preparation(
                 chunk_sizes=chunk_sizes,
                 chunk_overlaps=chunk_overlaps,
                 inference_max_threads=inference_max_threads,
+                pre_validated_search_space=pre_validated_ss,
             )
 
             report.save_json(search_space_prep_report.path)

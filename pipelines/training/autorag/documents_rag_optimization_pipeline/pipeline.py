@@ -20,6 +20,9 @@ from kfp_components.components.training.autorag.rag_templates_optimization.compo
 from kfp_components.components.training.autorag.search_space_preparation.component import (
     search_space_preparation,
 )
+from kfp_components.components.training.autorag.search_space_validation.component import (
+    search_space_validation,
+)
 
 MAX_CPUS = "32"
 MAX_MEMORY = "64Gi"
@@ -121,11 +124,23 @@ def documents_rag_optimization_pipeline(
         MAX_MEMORY
     )
 
+    search_space_validation_task = search_space_validation(
+        test_data=test_data_loader_task.outputs["test_data"],
+        embedding_models=embedding_models,
+        generation_models=generation_models,
+        preset=preset,
+    )
+    search_space_validation_task.set_caching_options(False)
+    search_space_validation_task.set_cpu_request("1").set_memory_request("4Gi").set_cpu_limit("2").set_memory_limit(
+        "8Gi"
+    )
+
     documents_discovery_task = documents_discovery(
         input_data_bucket_name=input_data_bucket_name,
         input_data_path=input_data_key,
         test_data=test_data_loader_task.outputs["test_data"],
     )
+    documents_discovery_task.after(search_space_validation_task)
 
     documents_discovery_task.set_caching_options(False)
     documents_discovery_task.set_cpu_request("2").set_memory_request("8Gi").set_cpu_limit(MAX_CPUS).set_memory_limit(
@@ -161,6 +176,7 @@ def documents_rag_optimization_pipeline(
     mps_task = search_space_preparation(
         test_data=test_data_loader_task.outputs["test_data"],
         extracted_text=text_extraction_task.outputs["extracted_text"],
+        validated_search_space=search_space_validation_task.outputs["validated_search_space"],
         embedding_models=embedding_models,
         generation_models=generation_models,
         preset=preset,
@@ -189,6 +205,14 @@ def documents_rag_optimization_pipeline(
     hpo_task.set_caching_options(False)
     hpo_task.set_cpu_request("4").set_memory_request("16Gi").set_cpu_limit(MAX_CPUS).set_memory_limit(MAX_MEMORY)
 
+    use_secret_as_env(
+        search_space_validation_task,
+        ogx_secret_name,
+        {
+            "OGX_CLIENT_BASE_URL": "OGX_CLIENT_BASE_URL",
+            "OGX_CLIENT_API_KEY": "OGX_CLIENT_API_KEY",
+        },
+    )
     use_secret_as_env(
         mps_task,
         ogx_secret_name,
