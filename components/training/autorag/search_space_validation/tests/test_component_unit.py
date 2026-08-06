@@ -17,7 +17,7 @@ def _make_ai4rag_mocks():
     """Build mock modules for ai4rag dependencies used by search_space_validation."""
     mock_create_ogx_client = mock.MagicMock(name="create_ogx_client")
     mock_prepare_with_ogx = mock.MagicMock(name="prepare_search_space_with_ogx")
-    mock_validate_model_list = mock.MagicMock(name="validate_model_list")
+    mock_validate_model_list = mock.MagicMock(name="_validate_model_list")
     mock_serialize_model = mock.MagicMock(name="_serialize_model", return_value={"model_id": "mock"})
     mock_ensure_sqlite3 = mock.MagicMock(name="ensure_sqlite3")
     mock_pd = mock.MagicMock(name="pandas")
@@ -28,11 +28,9 @@ def _make_ai4rag_mocks():
     mock_prepare_module = mock.MagicMock()
     mock_prepare_module.prepare_search_space_with_ogx = mock_prepare_with_ogx
 
-    mock_validators_module = mock.MagicMock()
-    mock_validators_module.validate_model_list = mock_validate_model_list
-
     mock_search_space_prep_module = mock.MagicMock()
     mock_search_space_prep_module._serialize_model = mock_serialize_model
+    mock_search_space_prep_module._validate_model_list = mock_validate_model_list
 
     mock_compat = mock.MagicMock()
     mock_compat.ensure_sqlite3 = mock_ensure_sqlite3
@@ -49,7 +47,6 @@ def _make_ai4rag_mocks():
         "ai4rag.search_space.prepare.prepare_search_space": mock_prepare_module,
         "ai4rag.utils": mock.MagicMock(),
         "ai4rag.utils.compat": mock_compat,
-        "ai4rag.utils.validators": mock_validators_module,
         "pandas": mock_pd,
     }
     return (

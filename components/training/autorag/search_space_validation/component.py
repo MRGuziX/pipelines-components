@@ -55,10 +55,9 @@ def search_space_validation(
 
     ensure_sqlite3()
 
-    from ai4rag.components.optimization.search_space_preparation import _serialize_model
+    from ai4rag.components.optimization.search_space_preparation import _serialize_model, _validate_model_list
     from ai4rag.components.utils.ogx_client import create_ogx_client
     from ai4rag.search_space.prepare.prepare_search_space import prepare_search_space_with_ogx
-    from ai4rag.utils.validators import validate_model_list
 
     logging.basicConfig(level=logging.INFO)
 
@@ -102,8 +101,8 @@ def search_space_validation(
             status.set_metadata(display_name="Search Space Validation Status")
             component_status.metadata["display_name"] = "Search Space Validation Status"
         with status.stage("validate_search_space"):
-            validate_model_list(embedding_models, "embedding_models")
-            validate_model_list(generation_models, "generation_models")
+            _validate_model_list(embedding_models, "embedding_models")
+            _validate_model_list(generation_models, "generation_models")
 
             payload = {}
             if generation_models:
