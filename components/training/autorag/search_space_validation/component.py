@@ -96,9 +96,7 @@ def search_space_validation(
             raise ValueError(f"Cannot load embedded module from {_module_path}")
         _status_module = importlib.util.module_from_spec(_spec)
         _spec.loader.exec_module(_status_module)
-        status = _status_module.bootstrap_status_tracker(
-            embedded_artifact, component_status, "search_space_validation"
-        )
+        status = _status_module.bootstrap_status_tracker(embedded_artifact, component_status, "search_space_validation")
     with status:
         if component_status is not None:
             status.set_metadata(display_name="Search Space Validation Status")
@@ -149,15 +147,9 @@ def search_space_validation(
             non_model_keys = [
                 p.name for p in search_space.params if p.name not in ("foundation_model", "embedding_model")
             ]
-            result = {
-                key: list(dict.fromkeys(combo[key] for combo in valid_combinations)) for key in non_model_keys
-            }
-            result["foundation_model"] = [
-                _serialize_model(m) for m in search_space["foundation_model"].values
-            ]
-            result["embedding_model"] = [
-                _serialize_model(m) for m in search_space["embedding_model"].values
-            ]
+            result = {key: list(dict.fromkeys(combo[key] for combo in valid_combinations)) for key in non_model_keys}
+            result["foundation_model"] = [_serialize_model(m) for m in search_space["foundation_model"].values]
+            result["embedding_model"] = [_serialize_model(m) for m in search_space["embedding_model"].values]
             result["combination_count"] = len(valid_combinations)
 
             out_path = Path(validated_search_space.path)
