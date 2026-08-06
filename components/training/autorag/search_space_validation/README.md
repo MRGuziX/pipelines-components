@@ -38,3 +38,12 @@ seconds rather than after minutes of compute.
   - search-space
   - validation
 - **Last Verified**: 2026-08-05 00:00:00+00:00
+- **Owners**:
+  - No Parent Owners: Yes
+  - Approvers:
+    - LukaszCmielowski
+    - DorotaDR
+  - Reviewers:
+    - filip-komarzyniec
+    - jakub-walaszczyk
+    - MichalSteczko
