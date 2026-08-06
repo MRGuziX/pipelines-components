@@ -13,6 +13,16 @@
       ]
     },
     {
+      "id": "search_space_validation",
+      "description": "Validate search space configuration, model availability, and parameter constraints.",
+      "stages": [
+        {
+          "id": "validate_search_space",
+          "description": "Validate model availability, chunking constraints, and search space viability before document processing."
+        }
+      ]
+    },
+    {
       "id": "documents_discovery",
       "description": "List input documents in S3 and write a documents descriptor manifest.",
       "stages": [

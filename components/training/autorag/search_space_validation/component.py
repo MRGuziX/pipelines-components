@@ -55,7 +55,7 @@ def search_space_validation(
 
     ensure_sqlite3()
 
-    from ai4rag.components.optimization.search_space_preparation import _serialize_model, _validate_model_list
+    from ai4rag.components.optimization.search_space_preparation import _validate_model_list, serialize_model
     from ai4rag.components.utils.ogx_client import create_ogx_client
     from ai4rag.search_space.prepare.prepare_search_space import prepare_search_space_with_ogx
 
@@ -131,9 +131,19 @@ def search_space_validation(
                 benchmark_data=benchmark_df,
             )
 
+            for fm in search_space["foundation_model"].values:
+                lang = getattr(fm, "language", None)
+                if lang is not None:
+                    logging.info("Model %s: detected language %s (%s).", fm.model_id, lang.name, lang.code)
+                else:
+                    logging.warning("Model %s: language detection was not performed.", fm.model_id)
+
             valid_combinations = search_space.combinations
             if not valid_combinations:
-                logging.warning("No valid combinations remain after applying search space rules.")
+                raise ValueError(
+                    "No valid parameter combinations remain after applying search space rules. "
+                    "Check chunking_methods, chunk_sizes, and chunk_overlaps for conflicting constraints."
+                )
 
             logging.info(
                 "Search space validated: %d valid combinations. chunking_method=%s chunk_size=%s chunk_overlap=%s",
@@ -147,8 +157,8 @@ def search_space_validation(
                 p.name for p in search_space.params if p.name not in ("foundation_model", "embedding_model")
             ]
             result = {key: list(dict.fromkeys(combo[key] for combo in valid_combinations)) for key in non_model_keys}
-            result["foundation_model"] = [_serialize_model(m) for m in search_space["foundation_model"].values]
-            result["embedding_model"] = [_serialize_model(m) for m in search_space["embedding_model"].values]
+            result["foundation_model"] = [serialize_model(m) for m in search_space["foundation_model"].values]
+            result["embedding_model"] = [serialize_model(m) for m in search_space["embedding_model"].values]
             result["combination_count"] = len(valid_combinations)
 
             out_path = Path(validated_search_space.path)

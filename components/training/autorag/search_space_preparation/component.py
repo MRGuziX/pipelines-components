@@ -117,7 +117,7 @@ def search_space_preparation(
                 import json
 
                 from ai4rag.components.optimization.rag_templates_optimization import (
-                    _deserialize_model,
+                    deserialize_model,
                 )
                 from ai4rag.search_space.src.parameter import Parameter
                 from ai4rag.search_space.src.search_space import AI4RAGSearchSpace
@@ -131,9 +131,9 @@ def search_space_preparation(
                         if param_name == "combination_count":
                             continue
                         if param_name == "foundation_model":
-                            values = [_deserialize_model(m, ogx_client) for m in values]
+                            values = [deserialize_model(m, ogx_client) for m in values]
                         elif param_name == "embedding_model":
-                            values = [_deserialize_model(m, ogx_client) for m in values]
+                            values = [deserialize_model(m, ogx_client) for m in values]
                         params.append(Parameter(param_name, "C", values=values))
                     pre_validated_ss = AI4RAGSearchSpace(params=params)
                     logging.info("Using pre-validated search space from upstream validation step.")
