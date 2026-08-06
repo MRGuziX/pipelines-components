@@ -16,6 +16,7 @@ _EXPECTED_ROOT_DAG_TASK_IDS = (
     "documents-discovery",
     "rag-templates-optimization",
     "search-space-preparation",
+    "search-space-validation",
     "test-data-loader",
     "text-extraction",
 )

@@ -16,6 +16,7 @@ Thin wrapper that delegates to ``ai4rag.components.optimization.search_space_pre
 | `extracted_text` | `dsl.Input[dsl.Artifact]` | `None` | Input artifact with extracted text documents. |
 | `search_space_prep_report` | `dsl.Output[dsl.Artifact]` | `None` | Output artifact for the JSON search space report. |
 | `embedded_artifact` | `dsl.EmbeddedInput[dsl.Dataset]` | `None` | Embedded ``autorag.shared`` helpers injected by KFP at runtime. |
+| `validated_search_space` | `dsl.Input[dsl.Artifact]` | `None` | Optional input artifact from a prior search_space_validation step.  When provided, the pre-validated AI4RAGSearchSpace is reconstructed from this JSON and passed to ``prepare_search_space_report`` so that OGX model resolution is not repeated. |
 | `embedding_models` | `Optional[List]` | `None` | List of embedding model identifiers to try. |
 | `generation_models` | `Optional[List]` | `None` | List of generation model identifiers to try. |
 | `component_status` | `dsl.Output[dsl.Artifact]` | `None` | Output artifact containing stage-level progress tracking. |
