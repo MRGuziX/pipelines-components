@@ -15,6 +15,7 @@ def test_load_documents_rag_optimization_manifest():
     component_ids = [component["id"] for component in manifest["components"]]
     assert component_ids == [
         "test_data_loader",
+        "search_space_validation",
         "documents_discovery",
         "text_extraction",
         "search_space_preparation",
@@ -27,6 +28,7 @@ def test_pipeline_component_ids():
     ids = pipeline_component_ids(PIPELINE_DOCUMENTS_RAG_OPTIMIZATION)
     assert ids == [
         "test_data_loader",
+        "search_space_validation",
         "documents_discovery",
         "text_extraction",
         "search_space_preparation",
