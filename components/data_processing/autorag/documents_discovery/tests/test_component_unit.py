@@ -295,4 +295,3 @@ class TestDocumentsDiscoveryWithTestDataUnitTests:
                     test_data=test_data_artifact,
                     discovered_documents=discovered,
                 )
-
