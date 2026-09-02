@@ -85,6 +85,10 @@ def text_extraction(
             output_dir = Path(extracted_text.path)
             output_dir.mkdir(parents=True, exist_ok=True)
 
+            from ai4rag.components.data.text_extraction import DoclingExtractionConfig
+
+            docling_config = DoclingExtractionConfig(do_table_structure=do_table_structure)
+
             extract_text(
                 documents=descriptor["documents"],
                 bucket=descriptor["bucket"],
@@ -96,7 +100,7 @@ def text_extraction(
                 error_tolerance=error_tolerance,
                 max_extraction_workers=max_extraction_workers,
                 docling_artifacts_path=os.environ.get("DOCLING_ARTIFACTS_PATH"),
-                do_table_structure=do_table_structure,
+                docling_config=docling_config,
             )
 
 
