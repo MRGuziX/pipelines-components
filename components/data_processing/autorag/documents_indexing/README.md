@@ -88,7 +88,7 @@ def example_pipeline(
 - **Tags**:
   - data-indexing
   - autorag
-- **Last Verified**: 2026-08-24 00:00:00+00:00
+- **Last Verified**: 2026-09-02 00:00:00+00:00
 - **Owners**:
   - No Parent Owners: Yes
   - Approvers:

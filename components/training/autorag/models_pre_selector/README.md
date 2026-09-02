@@ -71,7 +71,7 @@ def example_pipeline():
   - autorag
   - model-selection
   - optimization
-- **Last Verified**: 2026-08-24 00:00:00+00:00
+- **Last Verified**: 2026-09-02 00:00:00+00:00
 - **Owners**:
   - No Parent Owners: Yes
   - Approvers:
