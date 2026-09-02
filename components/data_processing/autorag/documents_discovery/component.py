@@ -114,7 +114,7 @@ def documents_discovery(
                     {
                         doc_key
                         for r in test_data_result.data
-                        for doc_key in r.get("correct_answer_document_keys", r.get("correct_answer_document_ids", []))
+                        for doc_key in r.get("correct_answer_document_keys", [])
                     }
                 )
 

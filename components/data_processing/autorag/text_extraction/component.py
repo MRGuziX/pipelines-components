@@ -101,6 +101,7 @@ def text_extraction(
                 max_extraction_workers=max_extraction_workers,
                 docling_artifacts_path=os.environ.get("DOCLING_ARTIFACTS_PATH"),
                 docling_config=docling_config,
+                input_data_key=descriptor.get("prefix", ""),
             )
 
 

@@ -18,15 +18,6 @@ VALID_BENCHMARK_RECORDS = [
     },
 ]
 
-VALID_BENCHMARK_RECORDS_OLD_FIELD = [
-    {"question": "What is X?", "correct_answers": ["Answer X"], "correct_answer_document_ids": ["doc_a.pdf"]},
-    {
-        "question": "What is Y?",
-        "correct_answers": ["Answer Y"],
-        "correct_answer_document_ids": ["doc_a.pdf", "doc_b.txt"],
-    },
-]
-
 
 def _make_ai4rag_mocks(include_test_data_loader=False):
     """Build mock modules for ai4rag.components and ai4rag.components.data."""
@@ -305,38 +296,3 @@ class TestDocumentsDiscoveryWithTestDataUnitTests:
                     discovered_documents=discovered,
                 )
 
-    def test_with_old_field_name_backward_compatibility(self, tmp_path):
-        """Test that old field name 'correct_answer_document_ids' still works."""
-        modules, mock_create_s3, mock_discover, mock_load = _make_ai4rag_mocks(include_test_data_loader=True)
-
-        test_s3 = mock.MagicMock(name="test_s3_client")
-        input_s3 = mock.MagicMock(name="input_s3_client")
-        mock_create_s3.side_effect = [test_s3, input_s3]
-
-        # Use old field name in test data
-        mock_load.return_value = SimpleNamespace(data=VALID_BENCHMARK_RECORDS_OLD_FIELD)
-        mock_discover.return_value = mock.MagicMock()
-
-        test_data_artifact = mock.MagicMock()
-        test_data_artifact.path = str(tmp_path / "test_data.json")
-        discovered = mock.MagicMock()
-        discovered.path = str(tmp_path / "descriptor")
-
-        with mock.patch.dict("sys.modules", modules):
-            documents_discovery.python_func(
-                input_data_bucket_name="input-bucket",
-                test_data_bucket_name="test-bucket",
-                test_data_path_key="data/test.json",
-                input_data_path="docs/",
-                test_data=test_data_artifact,
-                discovered_documents=discovered,
-            )
-
-        # Verify the component still works with old field names
-        mock_load.assert_called_once()
-        mock_discover.assert_called_once()
-
-        # Verify test data was written out (would have failed if field extraction broke)
-        with open(test_data_artifact.path) as f:
-            written_data = json.load(f)
-        assert len(written_data) == 2
