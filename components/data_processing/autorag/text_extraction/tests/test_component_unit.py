@@ -18,10 +18,17 @@ MOCKED_ENV_VARIABLES = {
 
 def _make_ai4rag_mocks():
     """Build mock modules for ai4rag.components.data.text_extraction."""
+    from dataclasses import dataclass
+
+    @dataclass(frozen=True)
+    class DoclingExtractionConfig:
+        do_table_structure: bool = False
+
     mock_extract_text = mock.MagicMock(name="extract_text")
 
     mock_text_extraction_module = mock.MagicMock()
     mock_text_extraction_module.extract_text = mock_extract_text
+    mock_text_extraction_module.DoclingExtractionConfig = DoclingExtractionConfig
 
     modules = {
         "ai4rag": mock.MagicMock(),
