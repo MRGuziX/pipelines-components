@@ -83,19 +83,18 @@ class TestTextExtractionUnitTests:
             )
 
         assert output_dir.exists()
-        mock_extract.assert_called_once_with(
-            documents=[{"key": "docs/a.pdf", "size_bytes": 1000}],
-            bucket="my-bucket",
-            output_dir=output_dir,
-            s3_endpoint="https://s3.example.com",
-            s3_access_key="test_key",
-            s3_secret_key="test_secret",
-            s3_region="us-east-1",
-            error_tolerance=0.1,
-            max_extraction_workers=4,
-            docling_artifacts_path=None,
-            do_table_structure=False,
-        )
+        call_kwargs = mock_extract.call_args.kwargs
+        assert call_kwargs["documents"] == [{"key": "docs/a.pdf", "size_bytes": 1000}]
+        assert call_kwargs["bucket"] == "my-bucket"
+        assert call_kwargs["output_dir"] == output_dir
+        assert call_kwargs["s3_endpoint"] == "https://s3.example.com"
+        assert call_kwargs["s3_access_key"] == "test_key"
+        assert call_kwargs["s3_secret_key"] == "test_secret"
+        assert call_kwargs["s3_region"] == "us-east-1"
+        assert call_kwargs["error_tolerance"] == 0.1
+        assert call_kwargs["max_extraction_workers"] == 4
+        assert call_kwargs["docling_artifacts_path"] is None
+        assert call_kwargs["input_data_key"] == "docs/"
 
     @mock.patch.dict(
         "os.environ",
@@ -266,4 +265,5 @@ class TestTextExtractionUnitTests:
                 preset=preset_value,
             )
 
-        assert mock_extract.call_args.kwargs["do_table_structure"] == expected_do_table_structure
+        docling_config = mock_extract.call_args.kwargs["docling_config"]
+        assert docling_config.do_table_structure == expected_do_table_structure
