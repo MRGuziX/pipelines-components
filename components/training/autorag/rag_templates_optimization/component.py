@@ -31,8 +31,10 @@ def rag_templates_optimization(
 ):
     """RAG Templates Optimization component.
 
-    Thin wrapper that delegates to
-    ``ai4rag.components.optimization.rag_templates_optimization.run_rag_optimization``.
+    Runs search-space construction, evaluator setup, and the optimization
+    experiment directly against ``ai4rag`` primitives (``AI4RAGSearchSpace``,
+    ``AI4RAGExperiment``, and the ``ragas``/``unitxt`` evaluators), since
+    ``ai4rag`` no longer ships a single orchestration entry point for this flow.
 
     Args:
         extracted_text: Path to extracted text documents.
