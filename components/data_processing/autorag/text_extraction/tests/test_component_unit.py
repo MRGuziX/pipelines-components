@@ -17,26 +17,26 @@ MOCKED_ENV_VARIABLES = {
 
 
 def _make_ai4rag_mocks():
-    """Build mock modules for ai4rag.components.data.text_extraction."""
-    from dataclasses import dataclass
+    """Build mock modules matching the component's ``ai4rag.utils.data.text_extraction`` import.
 
-    @dataclass(frozen=True)
-    class DoclingExtractionConfig:
-        do_table_structure: bool = False
-
+    Both ``extract_text`` and ``DoclingExtractionConfig`` are mocked; the config
+    class is mocked (rather than using the real frozen dataclass) since ``ai4rag``
+    is not an installed dependency in the unit test environment.
+    """
     mock_extract_text = mock.MagicMock(name="extract_text")
+    mock_docling_config_cls = mock.MagicMock(name="DoclingExtractionConfig")
 
     mock_text_extraction_module = mock.MagicMock()
     mock_text_extraction_module.extract_text = mock_extract_text
-    mock_text_extraction_module.DoclingExtractionConfig = DoclingExtractionConfig
+    mock_text_extraction_module.DoclingExtractionConfig = mock_docling_config_cls
 
     modules = {
         "ai4rag": mock.MagicMock(),
-        "ai4rag.components": mock.MagicMock(),
-        "ai4rag.components.data": mock.MagicMock(),
-        "ai4rag.components.data.text_extraction": mock_text_extraction_module,
+        "ai4rag.utils": mock.MagicMock(),
+        "ai4rag.utils.data": mock.MagicMock(),
+        "ai4rag.utils.data.text_extraction": mock_text_extraction_module,
     }
-    return modules, mock_extract_text
+    return modules, mock_extract_text, mock_docling_config_cls
 
 
 class TestTextExtractionUnitTests:
@@ -63,7 +63,7 @@ class TestTextExtractionUnitTests:
     @mock.patch.dict("os.environ", MOCKED_ENV_VARIABLES, clear=True)
     def test_delegates_to_ai4rag_extract_text(self, tmp_path):
         """Wrapper reads descriptor and calls extract_text with correct args."""
-        modules, mock_extract = _make_ai4rag_mocks()
+        modules, mock_extract, mock_docling_config_cls = _make_ai4rag_mocks()
 
         descriptor_dir = tmp_path / "descriptor"
         descriptor_dir.mkdir()
@@ -90,18 +90,20 @@ class TestTextExtractionUnitTests:
             )
 
         assert output_dir.exists()
-        call_kwargs = mock_extract.call_args.kwargs
-        assert call_kwargs["documents"] == [{"key": "docs/a.pdf", "size_bytes": 1000}]
-        assert call_kwargs["bucket"] == "my-bucket"
-        assert call_kwargs["output_dir"] == output_dir
-        assert call_kwargs["s3_endpoint"] == "https://s3.example.com"
-        assert call_kwargs["s3_access_key"] == "test_key"
-        assert call_kwargs["s3_secret_key"] == "test_secret"
-        assert call_kwargs["s3_region"] == "us-east-1"
-        assert call_kwargs["error_tolerance"] == 0.1
-        assert call_kwargs["max_extraction_workers"] == 4
-        assert call_kwargs["docling_artifacts_path"] is None
-        assert call_kwargs["input_data_key"] == "docs/"
+        mock_docling_config_cls.assert_called_once_with(do_table_structure=False)
+        mock_extract.assert_called_once_with(
+            documents=[{"key": "docs/a.pdf", "size_bytes": 1000}],
+            bucket="my-bucket",
+            output_dir=output_dir,
+            s3_endpoint="https://s3.example.com",
+            s3_access_key="test_key",
+            s3_secret_key="test_secret",
+            s3_region="us-east-1",
+            error_tolerance=0.1,
+            max_extraction_workers=4,
+            docling_artifacts_path=None,
+            docling_config=mock_docling_config_cls.return_value,
+        )
 
     @mock.patch.dict(
         "os.environ",
@@ -110,7 +112,7 @@ class TestTextExtractionUnitTests:
     )
     def test_passes_docling_artifacts_path(self, tmp_path):
         """DOCLING_ARTIFACTS_PATH env var is forwarded to extract_text."""
-        modules, mock_extract = _make_ai4rag_mocks()
+        modules, mock_extract, _ = _make_ai4rag_mocks()
 
         descriptor_dir = tmp_path / "descriptor"
         descriptor_dir.mkdir()
@@ -133,7 +135,7 @@ class TestTextExtractionUnitTests:
     @mock.patch.dict("os.environ", MOCKED_ENV_VARIABLES, clear=True)
     def test_default_params_passed_as_none(self, tmp_path):
         """Default error_tolerance and max_extraction_workers are None."""
-        modules, mock_extract = _make_ai4rag_mocks()
+        modules, mock_extract, _ = _make_ai4rag_mocks()
 
         descriptor_dir = tmp_path / "descriptor"
         descriptor_dir.mkdir()
@@ -158,7 +160,7 @@ class TestTextExtractionUnitTests:
     @mock.patch.dict("os.environ", MOCKED_ENV_VARIABLES, clear=True)
     def test_propagates_ai4rag_exception(self, tmp_path):
         """Exceptions from ai4rag are propagated to the caller."""
-        modules, mock_extract = _make_ai4rag_mocks()
+        modules, mock_extract, _ = _make_ai4rag_mocks()
         mock_extract.side_effect = RuntimeError("Text extraction failed: 5/10 document(s) failed")
 
         descriptor_dir = tmp_path / "descriptor"
@@ -180,7 +182,7 @@ class TestTextExtractionUnitTests:
 
     def test_missing_descriptor_file_raises(self, tmp_path):
         """Missing documents_descriptor.json raises FileNotFoundError."""
-        modules, mock_extract = _make_ai4rag_mocks()
+        modules, _, _ = _make_ai4rag_mocks()
 
         empty_dir = tmp_path / "empty"
         empty_dir.mkdir()
@@ -201,7 +203,7 @@ class TestTextExtractionUnitTests:
     @mock.patch.dict("os.environ", MOCKED_ENV_VARIABLES, clear=True)
     def test_preset_validation_rejects_invalid(self, tmp_path):
         """Invalid preset raises ValueError."""
-        modules, _ = _make_ai4rag_mocks()
+        modules, _, _ = _make_ai4rag_mocks()
 
         descriptor_dir = tmp_path / "descriptor"
         descriptor_dir.mkdir()
@@ -225,7 +227,7 @@ class TestTextExtractionUnitTests:
     @mock.patch.dict("os.environ", MOCKED_ENV_VARIABLES, clear=True)
     def test_valid_presets_accepted(self, tmp_path, preset_value):
         """Both 'speed' and 'balanced' presets are accepted without error."""
-        modules, mock_extract = _make_ai4rag_mocks()
+        modules, mock_extract, _ = _make_ai4rag_mocks()
 
         descriptor_dir = tmp_path / "descriptor"
         descriptor_dir.mkdir()
@@ -252,8 +254,8 @@ class TestTextExtractionUnitTests:
     )
     @mock.patch.dict("os.environ", MOCKED_ENV_VARIABLES, clear=True)
     def test_preset_sets_do_table_structure(self, tmp_path, preset_value, expected_do_table_structure):
-        """Preset controls do_table_structure passed to extract_text."""
-        modules, mock_extract = _make_ai4rag_mocks()
+        """Preset controls do_table_structure passed to DoclingExtractionConfig."""
+        modules, mock_extract, mock_docling_config_cls = _make_ai4rag_mocks()
 
         descriptor_dir = tmp_path / "descriptor"
         descriptor_dir.mkdir()
@@ -272,5 +274,5 @@ class TestTextExtractionUnitTests:
                 preset=preset_value,
             )
 
-        docling_config = mock_extract.call_args.kwargs["docling_config"]
-        assert docling_config.do_table_structure == expected_do_table_structure
+        mock_docling_config_cls.assert_called_once_with(do_table_structure=expected_do_table_structure)
+        assert mock_extract.call_args.kwargs["docling_config"] == mock_docling_config_cls.return_value
