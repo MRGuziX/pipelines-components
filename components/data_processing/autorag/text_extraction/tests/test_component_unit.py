@@ -103,8 +103,40 @@ class TestTextExtractionUnitTests:
             max_extraction_workers=4,
             docling_artifacts_path=None,
             docling_config=mock_docling_config_cls.return_value,
-            input_data_key="docs/",
         )
+
+    @mock.patch.dict("os.environ", MOCKED_ENV_VARIABLES, clear=True)
+    def test_forwards_document_keys_verbatim(self, tmp_path):
+        """Documents are forwarded untouched; the prefix is not passed separately.
+
+        A document's ``key`` is what names it downstream, so the component must
+        not rewrite or strip it on the way through.
+        """
+        modules, mock_extract, _ = _make_ai4rag_mocks()
+
+        descriptor_dir = tmp_path / "descriptor"
+        descriptor_dir.mkdir()
+        documents = [
+            {"key": "docs/a/setup.txt", "size_bytes": 10},
+            {"key": "docs/b/setup.txt", "size_bytes": 20},
+        ]
+        descriptor = {"bucket": "b", "prefix": "docs/", "documents": documents}
+        (descriptor_dir / "documents_descriptor.json").write_text(json.dumps(descriptor), encoding="utf-8")
+
+        descriptor_artifact = mock.MagicMock()
+        descriptor_artifact.path = str(descriptor_dir)
+        output_artifact = mock.MagicMock()
+        output_artifact.path = str(tmp_path / "output")
+
+        with mock.patch.dict("sys.modules", modules):
+            text_extraction.python_func(
+                documents_descriptor=descriptor_artifact,
+                extracted_text=output_artifact,
+            )
+
+        call_kwargs = mock_extract.call_args.kwargs
+        assert call_kwargs["documents"] == documents
+        assert "input_data_key" not in call_kwargs
 
     @mock.patch.dict(
         "os.environ",

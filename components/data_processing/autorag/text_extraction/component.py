@@ -28,6 +28,8 @@ def text_extraction(
     Args:
         documents_descriptor: Input artifact containing
             documents_descriptor.json with bucket, prefix, and documents list.
+            Each document entry's ``key`` also names the extracted document,
+            so the prefix is not passed on separately.
         extracted_text: Output artifact directory where DoclingDocument JSON files
             will be written.
         component_status: Output artifact containing stage-level progress tracking.
@@ -101,7 +103,6 @@ def text_extraction(
                 max_extraction_workers=max_extraction_workers,
                 docling_artifacts_path=os.environ.get("DOCLING_ARTIFACTS_PATH"),
                 docling_config=docling_config,
-                input_data_key=descriptor.get("prefix", ""),
             )
 
 
