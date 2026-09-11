@@ -6,8 +6,8 @@ accelerate==1.14.0 \
     # via
     #   docling-ibm-models
     #   docling-slim
-ai4rag==0.15.0 \
-    --hash=sha256:acfaadd99fa41e139ecd22c5827656e9b0cc8c51442caaa4a8aaa82dd48eb491
+ai4rag==0.16.0 \
+    --hash=sha256:943da7a6060cbd922a87e8154693feba08503da8087f8752f92012fae8ebcd96
     # via -r requirements.in
 aiohappyeyeballs==2.7.1 \
     --hash=sha256:c1207ce1e31a8cb2fe0a3dc94cecd44dd3ba65e16a5cb7bc79f62d6b8074bc78
