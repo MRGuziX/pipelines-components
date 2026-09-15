@@ -23,11 +23,13 @@ def text_extraction(
 ):
     """Text Extraction component.
 
-    Thin wrapper that delegates to ``ai4rag.components.data.text_extraction.extract_text``.
+    Thin wrapper that delegates to ``ai4rag.utils.data.text_extraction.extract_text``.
 
     Args:
         documents_descriptor: Input artifact containing
             documents_descriptor.json with bucket, prefix, and documents list.
+            Each document entry's ``key`` also names the extracted document,
+            so the prefix is not passed on separately.
         extracted_text: Output artifact directory where DoclingDocument JSON files
             will be written.
         component_status: Output artifact containing stage-level progress tracking.
@@ -45,7 +47,7 @@ def text_extraction(
     import os
     from pathlib import Path
 
-    from ai4rag.components.data.text_extraction import extract_text
+    from ai4rag.utils.data.text_extraction import DoclingExtractionConfig, extract_text
 
     logging.basicConfig(level=logging.INFO)
 
@@ -85,6 +87,10 @@ def text_extraction(
             output_dir = Path(extracted_text.path)
             output_dir.mkdir(parents=True, exist_ok=True)
 
+            docling_config = DoclingExtractionConfig(
+                do_table_structure=do_table_structure,
+            )
+
             extract_text(
                 documents=descriptor["documents"],
                 bucket=descriptor["bucket"],
@@ -96,7 +102,7 @@ def text_extraction(
                 error_tolerance=error_tolerance,
                 max_extraction_workers=max_extraction_workers,
                 docling_artifacts_path=os.environ.get("DOCLING_ARTIFACTS_PATH"),
-                do_table_structure=do_table_structure,
+                docling_config=docling_config,
             )
 
 

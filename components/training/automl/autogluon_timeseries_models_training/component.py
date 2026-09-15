@@ -22,6 +22,7 @@ def autogluon_timeseries_models_training(
     extra_train_data_path: str,
     html_artifact: dsl.Output[dsl.HTML],
     component_status: dsl.Output[dsl.Artifact],
+    uses_synthetic_id: bool = False,
     sample_rows: str = "[]",
     sampling_config: Optional[dict] = None,
     split_config: Optional[dict] = None,
@@ -60,12 +61,13 @@ def autogluon_timeseries_models_training(
         models_artifact: Combined output artifact containing all refitted models.
         extra_train_data_path: Path to extra train split for full refit.
         html_artifact: Output HTML artifact containing the ranked leaderboard page.
+        component_status: Output artifact containing stage-level progress tracking for this component.
+        uses_synthetic_id: True if the loader injected a synthetic ID column for two-column datasets.
         sample_rows: Sample rows JSON string used in generated notebook placeholders.
         sampling_config: Optional sampling config stored in artifact metadata.
         split_config: Optional split config stored in artifact metadata.
         prediction_length: Forecast horizon (number of timesteps).
         known_covariates_names: Optional list of known covariate column names.
-        component_status: Output artifact containing stage-level progress tracking for this component.
         preset: Training quality tier. ``"speed"`` (default) or ``"balanced"``
             (may run more than 2x longer).
         eval_metric: Metric for model ranking (e.g. ``"mean_absolute_scaled_error"``,
@@ -161,7 +163,6 @@ def autogluon_timeseries_models_training(
         split_config = split_config or {}
         time_limit = PRESET_TIME_LIMITS[preset]
 
-        status.record("load_data", "started")
         train_df = pd.read_csv(train_data_path)
         test_df = pd.read_csv(test_data.path)
         logger.info("Loaded train=%s test=%s rows", len(train_df), len(test_df))
@@ -188,12 +189,6 @@ def autogluon_timeseries_models_training(
             train_ts.num_items,
             len(test_ts),
             test_ts.num_items,
-        )
-        status.record(
-            "load_data",
-            "completed",
-            train_rows=len(train_ts),
-            test_rows=len(test_ts),
         )
 
         # Create predictor path in workspace
@@ -243,9 +238,7 @@ def autogluon_timeseries_models_training(
         status.record(
             "model_selection",
             "completed",
-            top_n=top_n,
-            selected_models=top_models,
-            steps=["feature_engineering", "model_training", "stacking", "evaluation"],
+            metrics={"top_n": top_n, "selected_models": top_models},
         )
         logger.info(
             "Timeseries selection done: top_%s=%s best_score_test=%s",
@@ -335,16 +328,17 @@ def autogluon_timeseries_models_training(
                         _dtype_to_datatype(full_train_ts_df[col].dtype) if col in full_train_ts_df.columns else "string"
                     )
 
-                instance_fields = [
-                    {"name": id_column, "datatype": "string", "role": "id", "required": True},
-                    {"name": timestamp_column, "datatype": "string", "role": "timestamp", "required": True},
-                    {"name": target, "datatype": "number", "role": "target", "required": True},
-                ]
-                sample_instance = {
-                    id_column: "<string>",
-                    timestamp_column: "<string>",
-                    target: "<number>",
-                }
+                instance_fields = []
+                sample_instance = {}
+                if not uses_synthetic_id:
+                    instance_fields.append({"name": id_column, "datatype": "string", "role": "id", "required": True})
+                    sample_instance[id_column] = "<string>"
+                instance_fields.append(
+                    {"name": timestamp_column, "datatype": "string", "role": "timestamp", "required": True}
+                )
+                sample_instance[timestamp_column] = "<string>"
+                instance_fields.append({"name": target, "datatype": "number", "role": "target", "required": True})
+                sample_instance[target] = "<number>"
                 for col in covariates:
                     dt = _cov_datatype(col)
                     instance_fields.append({"name": col, "datatype": dt, "role": "known_covariate", "required": True})
@@ -358,11 +352,15 @@ def autogluon_timeseries_models_training(
                 payload = {"instances": [sample_instance]}
 
                 if covariates:
-                    cov_fields = [
-                        {"name": id_column, "datatype": "string", "role": "id", "required": True},
-                        {"name": timestamp_column, "datatype": "string", "role": "timestamp", "required": True},
-                    ]
-                    sample_cov = {id_column: "<string>", timestamp_column: "<string>"}
+                    cov_fields = []
+                    sample_cov = {}
+                    if not uses_synthetic_id:
+                        cov_fields.append({"name": id_column, "datatype": "string", "role": "id", "required": True})
+                        sample_cov[id_column] = "<string>"
+                    cov_fields.append(
+                        {"name": timestamp_column, "datatype": "string", "role": "timestamp", "required": True}
+                    )
+                    sample_cov[timestamp_column] = "<string>"
                     for col in covariates:
                         dt = _cov_datatype(col)
                         cov_fields.append({"name": col, "datatype": dt, "role": "known_covariate", "required": True})
@@ -437,6 +435,7 @@ def autogluon_timeseries_models_training(
                     "id_column": id_column,
                     "timestamp_column": timestamp_column,
                     "known_covariates_names": known_covariates_names or [],
+                    "uses_synthetic_id": uses_synthetic_id,
                 }
                 predictor_output.mkdir(parents=True, exist_ok=True)
                 with (predictor_output / "predictor_metadata.json").open("w", encoding="utf-8") as f:
@@ -537,8 +536,7 @@ def autogluon_timeseries_models_training(
         status.record(
             "refit_and_evaluate",
             "completed",
-            model_count=len(model_names_full),
-            eval_metric=eval_metric,
+            metrics={"model_count": len(model_names_full), "eval_metric": eval_metric},
         )
 
         # Phase C: leaderboard generation - uses models_metadata already built in the refit loop
@@ -549,6 +547,7 @@ def autogluon_timeseries_models_training(
         from kfp_components.components.training.automl.shared.leaderboard_utils import (
             _build_leaderboard_html,
             _build_leaderboard_table,
+            _format_metric_value,
         )
 
         eval_results_by_model = {m["name"]: m["metrics"]["test_data"] for m in models_metadata}
@@ -583,7 +582,7 @@ def autogluon_timeseries_models_training(
         best_model_name = str(leaderboard_df.iloc[0]["model"])
         leaderboard_df.index = pd.RangeIndex(start=1, stop=n + 1, name="rank")
         _metric_cols = [c for c in leaderboard_df.columns if c not in ("model", "notebook", "predictor")]
-        leaderboard_df[_metric_cols] = leaderboard_df[_metric_cols].round(4)
+        leaderboard_df[_metric_cols] = leaderboard_df[_metric_cols].map(_format_metric_value)
         html_table = _build_leaderboard_table(leaderboard_df)
 
         _template_ref = (
@@ -606,8 +605,7 @@ def autogluon_timeseries_models_training(
         status.record(
             "build_leaderboard",
             "completed",
-            best_model=best_model_name,
-            model_count=n,
+            metrics={"best_model": best_model_name, "model_count": n},
         )
 
         models_artifact.metadata["model_names"] = json.dumps(model_names_full)

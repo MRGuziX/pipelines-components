@@ -10,41 +10,43 @@ import pytest
 from ..component import documents_discovery
 
 VALID_BENCHMARK_RECORDS = [
-    {"question": "What is X?", "correct_answers": ["Answer X"], "correct_answer_document_ids": ["doc_a.pdf"]},
+    {"question": "What is X?", "correct_answers": ["Answer X"], "correct_answer_document_keys": ["doc_a.pdf"]},
     {
         "question": "What is Y?",
         "correct_answers": ["Answer Y"],
-        "correct_answer_document_ids": ["doc_a.pdf", "doc_b.txt"],
+        "correct_answer_document_keys": ["doc_a.pdf", "doc_b.txt"],
     },
 ]
 
 
 def _make_ai4rag_mocks(include_test_data_loader=False):
-    """Build mock modules for ai4rag.components and ai4rag.components.data."""
+    """Build mock modules matching the component's imports.
+
+    ``discover_documents`` and ``load_test_data`` are both imported from the
+    ``ai4rag.utils.data`` package, while ``create_s3_client`` comes from
+    ``ai4rag.utils.clients.s3``.
+    """
     mock_create_s3_client = mock.MagicMock(name="create_s3_client")
     mock_discover_documents = mock.MagicMock(name="discover_documents")
 
     mock_s3_module = mock.MagicMock()
     mock_s3_module.create_s3_client = mock_create_s3_client
 
-    mock_discovery_module = mock.MagicMock()
-    mock_discovery_module.discover_documents = mock_discover_documents
+    mock_data_module = mock.MagicMock()
+    mock_data_module.discover_documents = mock_discover_documents
 
     modules = {
         "ai4rag": mock.MagicMock(),
-        "ai4rag.components": mock.MagicMock(),
-        "ai4rag.components.data": mock.MagicMock(),
-        "ai4rag.components.data.documents_discovery": mock_discovery_module,
-        "ai4rag.components.utils": mock.MagicMock(),
-        "ai4rag.components.utils.s3": mock_s3_module,
+        "ai4rag.utils": mock.MagicMock(),
+        "ai4rag.utils.data": mock_data_module,
+        "ai4rag.utils.clients": mock.MagicMock(),
+        "ai4rag.utils.clients.s3": mock_s3_module,
     }
 
     mock_load_test_data = None
     if include_test_data_loader:
         mock_load_test_data = mock.MagicMock(name="load_test_data")
-        mock_loader_module = mock.MagicMock()
-        mock_loader_module.load_test_data = mock_load_test_data
-        modules["ai4rag.components.data.test_data_loader"] = mock_loader_module
+        mock_data_module.load_test_data = mock_load_test_data
 
     return modules, mock_create_s3_client, mock_discover_documents, mock_load_test_data
 
@@ -62,7 +64,7 @@ class TestDocumentsDiscoveryUnitTests:
         sig = inspect.signature(documents_discovery.python_func)
         params = list(sig.parameters)
         assert "input_data_bucket_name" in params
-        assert "input_data_path" in params
+        assert "input_data_keys" in params
         assert "test_data_bucket_name" in params
         assert "test_data_path_key" in params
         assert "benchmark_sample_size" in params
@@ -84,7 +86,7 @@ class TestDocumentsDiscoveryUnitTests:
         with mock.patch.dict("sys.modules", modules):
             documents_discovery.python_func(
                 input_data_bucket_name="my-bucket",
-                input_data_path="docs/",
+                input_data_keys=["docs/"],
                 sampling_enabled=True,
                 sampling_max_size=2.5,
                 discovered_documents=discovered,
@@ -100,6 +102,43 @@ class TestDocumentsDiscoveryUnitTests:
             s3_client=mock_s3_client,
         )
 
+    def test_uses_only_the_first_input_data_key(self, tmp_path):
+        """Discovery takes a single prefix, so only the first key is forwarded."""
+        modules, mock_create_s3, mock_discover, _ = _make_ai4rag_mocks()
+        mock_create_s3.return_value = mock.MagicMock()
+        mock_discover.return_value = mock.MagicMock()
+
+        discovered = mock.MagicMock()
+        discovered.path = str(tmp_path / "descriptor")
+
+        with mock.patch.dict("sys.modules", modules):
+            documents_discovery.python_func(
+                input_data_bucket_name="my-bucket",
+                input_data_keys=["first/", "second/", "third/"],
+                discovered_documents=discovered,
+            )
+
+        assert mock_discover.call_args.kwargs["prefix"] == "first/"
+
+    @pytest.mark.parametrize("input_data_keys", [[], None])
+    def test_empty_input_data_keys_discovers_whole_bucket(self, tmp_path, input_data_keys):
+        """An empty (or unset) key list falls back to an empty prefix."""
+        modules, mock_create_s3, mock_discover, _ = _make_ai4rag_mocks()
+        mock_create_s3.return_value = mock.MagicMock()
+        mock_discover.return_value = mock.MagicMock()
+
+        discovered = mock.MagicMock()
+        discovered.path = str(tmp_path / "descriptor")
+
+        with mock.patch.dict("sys.modules", modules):
+            documents_discovery.python_func(
+                input_data_bucket_name="my-bucket",
+                input_data_keys=input_data_keys,
+                discovered_documents=discovered,
+            )
+
+        assert mock_discover.call_args.kwargs["prefix"] == ""
+
     def test_saves_result_to_artifact_path(self, tmp_path):
         """DiscoveryResult.save is called with the correct output path."""
         modules, mock_create_s3, mock_discover, _ = _make_ai4rag_mocks()
@@ -113,7 +152,7 @@ class TestDocumentsDiscoveryUnitTests:
         with mock.patch.dict("sys.modules", modules):
             documents_discovery.python_func(
                 input_data_bucket_name="my-bucket",
-                input_data_path="docs/",
+                input_data_keys=["docs/"],
                 discovered_documents=discovered,
             )
 
@@ -136,7 +175,7 @@ class TestDocumentsDiscoveryUnitTests:
         with mock.patch.dict("sys.modules", modules):
             documents_discovery.python_func(
                 input_data_bucket_name="my-bucket",
-                input_data_path="docs/",
+                input_data_keys=["docs/"],
                 test_data_bucket_name="",
                 discovered_documents=discovered,
             )
@@ -157,7 +196,7 @@ class TestDocumentsDiscoveryUnitTests:
             with pytest.raises(ValueError, match="No documents to process"):
                 documents_discovery.python_func(
                     input_data_bucket_name="my-bucket",
-                    input_data_path="docs/",
+                    input_data_keys=["docs/"],
                     discovered_documents=discovered,
                 )
 
@@ -186,7 +225,7 @@ class TestDocumentsDiscoveryWithTestDataUnitTests:
                 input_data_bucket_name="input-bucket",
                 test_data_bucket_name="test-bucket",
                 test_data_path_key="data/test.json",
-                input_data_path="docs/",
+                input_data_keys=["docs/"],
                 test_data=test_data_artifact,
                 discovered_documents=discovered,
             )
