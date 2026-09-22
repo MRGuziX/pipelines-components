@@ -42,7 +42,6 @@ def _make_ai4rag_mocks() -> SimpleNamespace:
         name="serialize_model",
         side_effect=lambda m: {"model_id": m.model_id},
     )
-
     mps_module = mock.MagicMock()
     mps_module.ModelsPreSelector = models_pre_selector_cls
 

@@ -92,16 +92,14 @@ def documents_rag_optimization_pipeline(
         generation_models: List of foundation/generation model identifiers to use in the
             search space. Required: MaaS exposes no metadata to distinguish model types, so
             generation models can no longer be inferred and must be declared explicitly.
-        input_data_keys: Object keys (paths) of the input documents in the input data bucket,
-            1-10 of them. Every one is discovered and merged into a single corpus deduplicated
-            by object key; leave empty to use the whole bucket. More than 10 fails the run.
-        optimization_metric: Quality metric used to rank RAG patterns. Supported values:
-            "faithfulness", "answer_correctness", "context_correctness", "answer_relevance",
-            and "overall_score" (default). "faithfulness", "answer_correctness", and
-            "context_correctness" are deterministic Unitxt metrics; choosing one as the
-            optimization metric keeps the experiment deterministic. The LLM-judge metric
-            "answer_relevance" is always computed but only drives optimization when selected
-            (or via "overall_score", which aggregates all metrics).
+        input_data_keys: Up to ten object-key prefixes for input documents in the input
+            data bucket. Every location is discovered and merged into one deduplicated corpus.
+        optimization_metric: Quality metric used to rank RAG patterns. Use an
+            evaluator-qualified value such as ``"unitxt:faithfulness"``,
+            ``"ragas:context_precision"``, or ``"custom:overall_score"`` (default).
+            The ``speed`` preset supports Unitxt and custom metrics; ``balanced`` also
+            supports RAGAS metrics. ``custom:overall_score`` aggregates Unitxt outputs
+            for ``speed`` and Unitxt plus RAGAS outputs for ``balanced``.
         optimization_max_rag_patterns: Maximum number of RAG patterns to generate. Passed to ai4rag
             (max_number_of_rag_patterns). Defaults to 8.
         preset: Pipeline quality tier. "speed" (default) uses recursive chunking,
@@ -143,11 +141,14 @@ def documents_rag_optimization_pipeline(
         MAX_CPUS
     ).set_memory_limit(MAX_MEMORY)
 
+    # Consuming the detected language also orders this task after search space
+    # preparation, so misconfigured models still fail before any heavy document
+    # processing starts.
     text_extraction_task = text_extraction(
         documents_descriptor=documents_discovery_task.outputs["discovered_documents"],
         preset=preset,
+        ocr_lang=search_space_preparation_task.outputs["detected_ocr_lang"],
     )
-    text_extraction_task.after(search_space_preparation_task)
 
     text_extraction_task.set_caching_options(False)
     text_extraction_task.set_cpu_request("4").set_memory_request("16Gi").set_cpu_limit(MAX_CPUS).set_memory_limit(

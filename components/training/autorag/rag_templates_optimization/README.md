@@ -57,7 +57,8 @@ def example_pipeline(
             configuration (MILVUS_* selects Milvus, PGVECTOR_* selects PGVector).
         input_data_secret_name: Name of the K8s secret with S3 credentials.
         input_data_bucket_name: S3 bucket containing input documents.
-        input_data_keys: Keys for the input data; only the first one is used for discovery.
+        input_data_keys: Up to ten input path prefixes. They are all propagated to
+            the indexing pipeline and generated notebook.
     """
     extracted_text = dsl.importer(
         artifact_uri="gs://placeholder/extracted_text",
