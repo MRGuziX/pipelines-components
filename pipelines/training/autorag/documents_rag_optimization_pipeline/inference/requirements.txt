@@ -4,5 +4,4 @@
 # TODO: Add actual inference dependencies once deployment implementation is complete
 
 # Core AutoRAG inference dependencies (placeholder versions)
-ai4rag>=0.14.0
-
+ai4rag>=0.18.0
