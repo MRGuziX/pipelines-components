@@ -186,6 +186,7 @@ def rag_templates_optimization(
                 pattern_data,
                 patt_dir / "indexing.ipynb",
                 input_data_keys=input_data_keys,
+                test_data_key=test_data_key,
             )
             generate_notebook_from_template(
                 "maas_inference",

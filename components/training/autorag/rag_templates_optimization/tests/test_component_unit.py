@@ -517,6 +517,7 @@ class TestRagTemplatesOptimizationRun:
             call for call in mocks.generate_notebook_from_template.call_args_list if call.args[0] == "maas_indexing"
         )
         assert indexing_notebook_call.kwargs["input_data_keys"] == ["data/docs/"]
+        assert indexing_notebook_call.kwargs["test_data_key"] == "data/test.json"
 
         assert rag_patterns.metadata["name"] == "rag_patterns_artifact"
         assert rag_patterns.metadata["uri"] == "gs://bucket/rag_patterns"
