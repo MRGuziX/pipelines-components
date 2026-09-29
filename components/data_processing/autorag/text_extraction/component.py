@@ -71,6 +71,7 @@ def text_extraction(
     import os
     from pathlib import Path
 
+    from ai4rag.utils.clients.s3 import create_s3_client
     from ai4rag.utils.data.text_extraction import DoclingExtractionConfig, extract_text
 
     logging.basicConfig(level=logging.INFO)
@@ -179,21 +180,24 @@ def text_extraction(
                 **ocr_model_paths,
             )
 
+            effective_ssl_cert_path = ssl_cert_path or os.environ.get("AWS_CA_BUNDLE")
+            s3_client = create_s3_client(verify=effective_ssl_cert_path or True)
+
             try:
                 extraction_result = extract_text(
                     documents=documents,
                     bucket=descriptor["bucket"],
                     output_dir=output_dir,
-                    ssl_cert_path=ssl_cert_path,
+                    s3_client=s3_client,
                     error_tolerance=error_tolerance,
                     max_extraction_workers=max_extraction_workers,
                     docling_artifacts_path=os.environ.get("DOCLING_ARTIFACTS_PATH"),
                     docling_config=docling_config,
                 )
             except RuntimeError as exc:
-                if "CERTIFICATE_VERIFY_FAILED" not in str(exc):
+                if not any(marker in str(exc) for marker in ("CERTIFICATE_VERIFY_FAILED", "SSL validation failed")):
                     raise
-                certificate_source = ssl_cert_path or os.environ.get("AWS_CA_BUNDLE", "the system trust bundle")
+                certificate_source = effective_ssl_cert_path or "the system trust bundle"
                 raise RuntimeError(
                     "S3 TLS certificate validation failed. Verify that ssl_cert_path="
                     f"{certificate_source!r} is a PEM CA bundle that trusts the S3 endpoint. "

@@ -139,6 +139,7 @@ class TestTextExtractionUnitTests:
             )
 
         assert output_dir.exists()
+        modules["ai4rag.utils.clients.s3"].create_s3_client.assert_called_once_with(verify=True)
         mock_docling_config_cls.assert_called_once_with(
             do_table_structure=False,
             do_ocr=True,
@@ -148,7 +149,7 @@ class TestTextExtractionUnitTests:
             documents=[{"key": "docs/a.pdf", "size_bytes": 1000}],
             bucket="my-bucket",
             output_dir=output_dir,
-            ssl_cert_path=None,
+            s3_client=modules["ai4rag.utils.clients.s3"].create_s3_client.return_value,
             error_tolerance=0.1,
             max_extraction_workers=4,
             docling_artifacts_path=None,
@@ -310,11 +311,11 @@ class TestTextExtractionUnitTests:
         call_kwargs = mock_extract.call_args.kwargs
         assert call_kwargs["error_tolerance"] is None
         assert call_kwargs["max_extraction_workers"] is None
-        assert call_kwargs["ssl_cert_path"] is None
+        modules["ai4rag.utils.clients.s3"].create_s3_client.assert_called_once_with(verify=True)
 
     @mock.patch.dict("os.environ", MOCKED_ENV_VARIABLES, clear=True)
-    def test_forwards_ssl_cert_path(self, tmp_path):
-        """An explicit CA-bundle path is passed to ai4rag without weakening TLS."""
+    def test_uses_ssl_cert_path_for_verified_s3_client(self, tmp_path):
+        """An explicit CA bundle configures the injected S3 client without weakening TLS."""
         modules, mock_extract, _ = _make_ai4rag_mocks()
         output_artifact = mock.MagicMock(path=str(tmp_path / "output"))
 
@@ -325,7 +326,9 @@ class TestTextExtractionUnitTests:
                 ssl_cert_path="/etc/pki/tls/custom-certs/ca-bundle.crt",
             )
 
-        assert mock_extract.call_args.kwargs["ssl_cert_path"] == "/etc/pki/tls/custom-certs/ca-bundle.crt"
+        create_s3_client = modules["ai4rag.utils.clients.s3"].create_s3_client
+        create_s3_client.assert_called_once_with(verify="/etc/pki/tls/custom-certs/ca-bundle.crt")
+        assert mock_extract.call_args.kwargs["s3_client"] is create_s3_client.return_value
 
     @mock.patch.dict("os.environ", MOCKED_ENV_VARIABLES, clear=True)
     def test_certificate_verification_error_has_actionable_message(self, tmp_path):
