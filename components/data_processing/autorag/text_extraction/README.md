@@ -8,7 +8,7 @@ Text Extraction component.
 
 Thin wrapper that delegates to ``ai4rag.utils.data.text_extraction.extract_text``.
 
-OCR is always enabled. Docling runs RapidOCR only on pages it flags as needing it, so pages carrying a text layer are read directly and scanned or image-only pages are OCR'd.
+OCR is enabled when the selected corpus contains a format other than plain text or Markdown. Docling runs RapidOCR only on pages it flags as needing it, so pages carrying a text layer are read directly and scanned or image-only pages are OCR'd.
 
 The four RapidOCR model paths are pinned explicitly from ``$DOCLING_ARTIFACTS_PATH`` rather than left to Docling. Docling resolves an unpinned language to PP-OCRv6 and looks for flat filenames directly under ``RapidOcr/``, but the AutoRAG image ships the PP-OCRv4 bundle in its nested
 ``RapidOcr/onnx/PP-OCRv4/...`` layout, so leaving the paths unset fails with ``FileNotFoundError`` at conversion time. Pinning them makes Docling skip resolution and use the models that are actually present.

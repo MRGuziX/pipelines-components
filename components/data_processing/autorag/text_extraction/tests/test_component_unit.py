@@ -30,10 +30,14 @@ def _make_ai4rag_mocks():
     mock_text_extraction_module = mock.MagicMock()
     mock_text_extraction_module.extract_text = mock_extract_text
     mock_text_extraction_module.DoclingExtractionConfig = mock_docling_config_cls
+    mock_s3_module = mock.MagicMock()
+    mock_s3_module.create_s3_client.return_value = mock.MagicMock(name="s3_client")
 
     modules = {
         "ai4rag": mock.MagicMock(),
         "ai4rag.utils": mock.MagicMock(),
+        "ai4rag.utils.clients": mock.MagicMock(),
+        "ai4rag.utils.clients.s3": mock_s3_module,
         "ai4rag.utils.data": mock.MagicMock(),
         "ai4rag.utils.data.text_extraction": mock_text_extraction_module,
     }
@@ -134,6 +138,7 @@ class TestTextExtractionUnitTests:
             )
 
         assert output_dir.exists()
+        modules["ai4rag.utils.clients.s3"].create_s3_client.assert_called_once_with()
         mock_docling_config_cls.assert_called_once_with(
             do_table_structure=False,
             do_ocr=True,
@@ -143,10 +148,7 @@ class TestTextExtractionUnitTests:
             documents=[{"key": "docs/a.pdf", "size_bytes": 1000}],
             bucket="my-bucket",
             output_dir=output_dir,
-            s3_endpoint="https://s3.example.com",
-            s3_access_key="test_key",
-            s3_secret_key="test_secret",
-            s3_region="us-east-1",
+            s3_client=modules["ai4rag.utils.clients.s3"].create_s3_client.return_value,
             error_tolerance=0.1,
             max_extraction_workers=4,
             docling_artifacts_path=None,
@@ -222,6 +224,7 @@ class TestTextExtractionUnitTests:
             "layout_candidate_documents": 2,
             "layout_model": "Docling Layout Heron",
             "ocr_candidate_documents": 2,
+            "ocr_enabled": True,
             "ocr_engine": "RapidOCR",
             "ocr_language": "english",
             "asr_candidate_documents": 2,
@@ -290,7 +293,7 @@ class TestTextExtractionUnitTests:
 
         descriptor_dir = tmp_path / "descriptor"
         descriptor_dir.mkdir()
-        descriptor = {"bucket": "b", "documents": []}
+        descriptor = {"bucket": "b", "documents": [{"key": "document.pdf"}]}
         (descriptor_dir / "documents_descriptor.json").write_text(json.dumps(descriptor), encoding="utf-8")
 
         descriptor_artifact = mock.MagicMock()
@@ -358,7 +361,7 @@ class TestTextExtractionUnitTests:
 
         descriptor_dir = tmp_path / "descriptor"
         descriptor_dir.mkdir()
-        descriptor = {"bucket": "b", "documents": []}
+        descriptor = {"bucket": "b", "documents": [{"key": "scan.pdf"}]}
         (descriptor_dir / "documents_descriptor.json").write_text(json.dumps(descriptor), encoding="utf-8")
 
         descriptor_artifact = mock.MagicMock()
@@ -382,7 +385,7 @@ class TestTextExtractionUnitTests:
 
         descriptor_dir = tmp_path / "descriptor"
         descriptor_dir.mkdir()
-        descriptor = {"bucket": "b", "documents": []}
+        descriptor = {"bucket": "b", "documents": [{"key": "scan.pdf"}]}
         (descriptor_dir / "documents_descriptor.json").write_text(json.dumps(descriptor), encoding="utf-8")
 
         descriptor_artifact = mock.MagicMock()
@@ -410,7 +413,7 @@ class TestTextExtractionUnitTests:
 
         descriptor_dir = tmp_path / "descriptor"
         descriptor_dir.mkdir()
-        descriptor = {"bucket": "b", "documents": []}
+        descriptor = {"bucket": "b", "documents": [{"key": "scan.pdf"}]}
         (descriptor_dir / "documents_descriptor.json").write_text(json.dumps(descriptor), encoding="utf-8")
 
         descriptor_artifact = mock.MagicMock()
@@ -435,7 +438,7 @@ class TestTextExtractionUnitTests:
     def _run_with_artifacts(self, tmp_path, modules, ocr_lang=None, artifacts=True):
         """Invoke the component against a stand-in artifacts tree and return its env path."""
         root = _make_docling_artifacts(tmp_path / "artifacts") if artifacts else None
-        descriptor_artifact = _write_descriptor(tmp_path)
+        descriptor_artifact = _write_descriptor(tmp_path, {"bucket": "b", "documents": [{"key": "document.pdf"}]})
         output_artifact = mock.MagicMock()
         output_artifact.path = str(tmp_path / "output")
 
@@ -452,8 +455,8 @@ class TestTextExtractionUnitTests:
         return root
 
     @mock.patch.dict("os.environ", MOCKED_ENV_VARIABLES, clear=True)
-    def test_ocr_is_always_enabled(self, tmp_path):
-        """do_ocr is always True and defaults to the English bundle."""
+    def test_ocr_is_enabled_for_non_text_documents(self, tmp_path):
+        """Non-text and non-Markdown documents enable OCR."""
         modules, _, mock_docling_config_cls = _make_ai4rag_mocks()
 
         output_artifact = mock.MagicMock()
@@ -461,13 +464,44 @@ class TestTextExtractionUnitTests:
 
         with mock.patch.dict("sys.modules", modules):
             text_extraction.python_func(
-                documents_descriptor=_write_descriptor(tmp_path),
+                documents_descriptor=_write_descriptor(tmp_path, {"bucket": "b", "documents": [{"key": "scan.pdf"}]}),
                 extracted_text=output_artifact,
             )
 
         kwargs = mock_docling_config_cls.call_args.kwargs
         assert kwargs["do_ocr"] is True
         assert kwargs["ocr_lang"] == "english"
+
+    @pytest.mark.parametrize("keys", [["notes.txt"], ["notes.md"], ["notes.TXT", "guide.MD"]])
+    @mock.patch.dict("os.environ", MOCKED_ENV_VARIABLES, clear=True)
+    def test_text_and_markdown_only_documents_disable_ocr(self, tmp_path, keys):
+        """Text and Markdown-only corpora do not require RapidOCR models."""
+        modules, _, mock_docling_config_cls = _make_ai4rag_mocks()
+        descriptor = {"bucket": "b", "documents": [{"key": key} for key in keys]}
+        output_artifact = mock.MagicMock(path=str(tmp_path / "output"))
+
+        with mock.patch.dict("sys.modules", modules):
+            text_extraction.python_func(
+                documents_descriptor=_write_descriptor(tmp_path, descriptor),
+                extracted_text=output_artifact,
+            )
+
+        assert mock_docling_config_cls.call_args.kwargs["do_ocr"] is False
+
+    @mock.patch.dict("os.environ", MOCKED_ENV_VARIABLES, clear=True)
+    def test_mixed_corpus_enables_ocr(self, tmp_path):
+        """A corpus containing any non-text or non-Markdown file enables OCR."""
+        modules, _, mock_docling_config_cls = _make_ai4rag_mocks()
+        descriptor = {"bucket": "b", "documents": [{"key": "notes.txt"}, {"key": "scan.pdf"}]}
+        output_artifact = mock.MagicMock(path=str(tmp_path / "output"))
+
+        with mock.patch.dict("sys.modules", modules):
+            text_extraction.python_func(
+                documents_descriptor=_write_descriptor(tmp_path, descriptor),
+                extracted_text=output_artifact,
+            )
+
+        assert mock_docling_config_cls.call_args.kwargs["do_ocr"] is True
 
     @pytest.mark.parametrize("ocr_lang", [None, "", "english", "en", "french", "pl", "unknown"])
     def test_non_chinese_languages_use_the_english_bundle(self, tmp_path, ocr_lang):
@@ -518,7 +552,9 @@ class TestTextExtractionUnitTests:
         with mock.patch.dict("os.environ", env, clear=True), mock.patch.dict("sys.modules", modules):
             with pytest.raises(FileNotFoundError, match="RapidOCR english models are missing"):
                 text_extraction.python_func(
-                    documents_descriptor=_write_descriptor(tmp_path),
+                    documents_descriptor=_write_descriptor(
+                        tmp_path, {"bucket": "b", "documents": [{"key": "scan.pdf"}]}
+                    ),
                     extracted_text=output_artifact,
                 )
 
@@ -532,7 +568,7 @@ class TestTextExtractionUnitTests:
 
         with mock.patch.dict("sys.modules", modules):
             text_extraction.python_func(
-                documents_descriptor=_write_descriptor(tmp_path),
+                documents_descriptor=_write_descriptor(tmp_path, {"bucket": "b", "documents": [{"key": "scan.pdf"}]}),
                 extracted_text=output_artifact,
             )
 
@@ -542,13 +578,13 @@ class TestTextExtractionUnitTests:
     @pytest.mark.parametrize("preset_value", ["speed", "balanced"])
     @mock.patch.dict("os.environ", MOCKED_ENV_VARIABLES, clear=True)
     def test_ocr_is_independent_of_preset(self, tmp_path, preset_value):
-        """OCR stays on for every preset; the preset only drives table structure."""
+        """A non-text corpus enables OCR independently of the table preset."""
         modules, _, mock_docling_config_cls = _make_ai4rag_mocks()
 
         descriptor_dir = tmp_path / "descriptor"
         descriptor_dir.mkdir()
         (descriptor_dir / "documents_descriptor.json").write_text(
-            json.dumps({"bucket": "b", "documents": []}), encoding="utf-8"
+            json.dumps({"bucket": "b", "documents": [{"key": "scan.pdf"}]}), encoding="utf-8"
         )
 
         descriptor_artifact = mock.MagicMock()
