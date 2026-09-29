@@ -21,6 +21,7 @@ def text_extraction(
     max_extraction_workers: Optional[int] = None,
     preset: str = "speed",
     ocr_lang: Optional[str] = None,
+    ssl_cert_path: Optional[str] = None,
 ):
     """Text Extraction component.
 
@@ -60,6 +61,9 @@ def text_extraction(
             languages. In the optimization pipeline this is filled from the language
             AutoRAG detects; for the indexing pipeline pass ``pattern.json``
             ``settings.generation.language.code``.
+        ssl_cert_path: Optional path to a PEM CA bundle used to verify the S3 endpoint.
+            It overrides ``AWS_CA_BUNDLE`` for this component. A wrong or unreadable
+            bundle fails with an actionable error; TLS verification is never disabled.
     """
     import importlib.util
     import json
@@ -67,7 +71,6 @@ def text_extraction(
     import os
     from pathlib import Path
 
-    from ai4rag.utils.clients.s3 import create_s3_client
     from ai4rag.utils.data.text_extraction import DoclingExtractionConfig, extract_text
 
     logging.basicConfig(level=logging.INFO)
@@ -176,18 +179,26 @@ def text_extraction(
                 **ocr_model_paths,
             )
 
-            s3_client = create_s3_client()
-
-            extraction_result = extract_text(
-                documents=documents,
-                bucket=descriptor["bucket"],
-                output_dir=output_dir,
-                s3_client=s3_client,
-                error_tolerance=error_tolerance,
-                max_extraction_workers=max_extraction_workers,
-                docling_artifacts_path=os.environ.get("DOCLING_ARTIFACTS_PATH"),
-                docling_config=docling_config,
-            )
+            try:
+                extraction_result = extract_text(
+                    documents=documents,
+                    bucket=descriptor["bucket"],
+                    output_dir=output_dir,
+                    ssl_cert_path=ssl_cert_path,
+                    error_tolerance=error_tolerance,
+                    max_extraction_workers=max_extraction_workers,
+                    docling_artifacts_path=os.environ.get("DOCLING_ARTIFACTS_PATH"),
+                    docling_config=docling_config,
+                )
+            except RuntimeError as exc:
+                if "CERTIFICATE_VERIFY_FAILED" not in str(exc):
+                    raise
+                certificate_source = ssl_cert_path or os.environ.get("AWS_CA_BUNDLE", "the system trust bundle")
+                raise RuntimeError(
+                    "S3 TLS certificate validation failed. Verify that ssl_cert_path="
+                    f"{certificate_source!r} is a PEM CA bundle that trusts the S3 endpoint. "
+                    "Do not disable certificate verification."
+                ) from exc
             status.record(
                 "extract_documents",
                 "completed",

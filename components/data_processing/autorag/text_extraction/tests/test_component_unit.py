@@ -104,6 +104,7 @@ class TestTextExtractionUnitTests:
         assert "error_tolerance" in params
         assert "max_extraction_workers" in params
         assert "preset" in params
+        assert "ssl_cert_path" in params
         assert sig.parameters["error_tolerance"].default is None
         assert sig.parameters["max_extraction_workers"].default is None
         assert sig.parameters["preset"].default == "speed"
@@ -138,7 +139,6 @@ class TestTextExtractionUnitTests:
             )
 
         assert output_dir.exists()
-        modules["ai4rag.utils.clients.s3"].create_s3_client.assert_called_once_with()
         mock_docling_config_cls.assert_called_once_with(
             do_table_structure=False,
             do_ocr=True,
@@ -148,7 +148,7 @@ class TestTextExtractionUnitTests:
             documents=[{"key": "docs/a.pdf", "size_bytes": 1000}],
             bucket="my-bucket",
             output_dir=output_dir,
-            s3_client=modules["ai4rag.utils.clients.s3"].create_s3_client.return_value,
+            ssl_cert_path=None,
             error_tolerance=0.1,
             max_extraction_workers=4,
             docling_artifacts_path=None,
@@ -310,6 +310,39 @@ class TestTextExtractionUnitTests:
         call_kwargs = mock_extract.call_args.kwargs
         assert call_kwargs["error_tolerance"] is None
         assert call_kwargs["max_extraction_workers"] is None
+        assert call_kwargs["ssl_cert_path"] is None
+
+    @mock.patch.dict("os.environ", MOCKED_ENV_VARIABLES, clear=True)
+    def test_forwards_ssl_cert_path(self, tmp_path):
+        """An explicit CA-bundle path is passed to ai4rag without weakening TLS."""
+        modules, mock_extract, _ = _make_ai4rag_mocks()
+        output_artifact = mock.MagicMock(path=str(tmp_path / "output"))
+
+        with mock.patch.dict("sys.modules", modules):
+            text_extraction.python_func(
+                documents_descriptor=_write_descriptor(tmp_path, {"bucket": "b", "documents": []}),
+                extracted_text=output_artifact,
+                ssl_cert_path="/etc/pki/tls/custom-certs/ca-bundle.crt",
+            )
+
+        assert mock_extract.call_args.kwargs["ssl_cert_path"] == "/etc/pki/tls/custom-certs/ca-bundle.crt"
+
+    @mock.patch.dict("os.environ", MOCKED_ENV_VARIABLES, clear=True)
+    def test_certificate_verification_error_has_actionable_message(self, tmp_path):
+        """Certificate failures name the supplied CA bundle and preserve TLS verification."""
+        modules, mock_extract, _ = _make_ai4rag_mocks()
+        mock_extract.side_effect = RuntimeError("CERTIFICATE_VERIFY_FAILED")
+        output_artifact = mock.MagicMock(path=str(tmp_path / "output"))
+
+        with mock.patch.dict("sys.modules", modules):
+            with pytest.raises(RuntimeError, match="ssl_cert_path=.*ca-bundle.crt") as exc_info:
+                text_extraction.python_func(
+                    documents_descriptor=_write_descriptor(tmp_path, {"bucket": "b", "documents": []}),
+                    extracted_text=output_artifact,
+                    ssl_cert_path="/etc/pki/tls/custom-certs/ca-bundle.crt",
+                )
+
+        assert "Do not disable certificate verification" in str(exc_info.value)
 
     @mock.patch.dict("os.environ", MOCKED_ENV_VARIABLES, clear=True)
     def test_propagates_ai4rag_exception(self, tmp_path):

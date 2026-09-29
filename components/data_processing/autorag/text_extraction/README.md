@@ -25,6 +25,7 @@ The four RapidOCR model paths are pinned explicitly from ``$DOCLING_ARTIFACTS_PA
 | `max_extraction_workers` | `Optional[int]` | `None` | Number of parallel worker processes used for text extraction. Defaults to 4. Set to None to use all available CPU cores. |
 | `preset` | `str` | `speed` | Pipeline quality tier. "speed" (default) disables Docling table structure parsing. "balanced" enables TableFormer table reconstruction. |
 | `ocr_lang` | `Optional[str]` | `None` | Language of the document text, used only to pick the RapidOCR model bundle. Accepts a language name or ISO 639-1 code. Chinese ("chinese", "zh", "ch") selects the Chinese bundle; everything else, including None (the default), selects the English bundle, which covers all Latin-script languages. In the optimization pipeline this is filled from the language AutoRAG detects; for the indexing pipeline pass ``pattern.json`` ``settings.generation.language.code``. |
+| `ssl_cert_path` | `Optional[str]` | `None` | Optional path to a PEM CA bundle used to verify the S3 endpoint. It overrides ``AWS_CA_BUNDLE`` for this component. A wrong or unreadable bundle fails with an actionable error; TLS verification is never disabled. |
 
 ## Usage Examples 🧪
 
