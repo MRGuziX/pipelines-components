@@ -321,7 +321,7 @@ class TestTextExtractionUnitTests:
 
         with mock.patch.dict("sys.modules", modules):
             text_extraction.python_func(
-                documents_descriptor=_write_descriptor(tmp_path, {"bucket": "b", "documents": []}),
+                documents_descriptor=_write_descriptor(tmp_path, {"bucket": "b", "documents": [{"key": "a.pdf"}]}),
                 extracted_text=output_artifact,
                 ssl_cert_path="/etc/pki/tls/custom-certs/ca-bundle.crt",
             )
@@ -329,6 +329,21 @@ class TestTextExtractionUnitTests:
         create_s3_client = modules["ai4rag.utils.clients.s3"].create_s3_client
         create_s3_client.assert_called_once_with(verify="/etc/pki/tls/custom-certs/ca-bundle.crt")
         assert mock_extract.call_args.kwargs["s3_client"] is create_s3_client.return_value
+
+    @mock.patch.dict("os.environ", {}, clear=True)
+    def test_empty_descriptor_skips_s3_client_creation(self, tmp_path):
+        """An empty descriptor returns through ai4rag without requiring S3 credentials."""
+        modules, mock_extract, _ = _make_ai4rag_mocks()
+        output_artifact = mock.MagicMock(path=str(tmp_path / "output"))
+
+        with mock.patch.dict("sys.modules", modules):
+            text_extraction.python_func(
+                documents_descriptor=_write_descriptor(tmp_path, {"bucket": "b", "documents": []}),
+                extracted_text=output_artifact,
+            )
+
+        modules["ai4rag.utils.clients.s3"].create_s3_client.assert_not_called()
+        assert mock_extract.call_args.kwargs["s3_client"] is None
 
     @mock.patch.dict("os.environ", MOCKED_ENV_VARIABLES, clear=True)
     def test_certificate_verification_error_has_actionable_message(self, tmp_path):
@@ -340,7 +355,7 @@ class TestTextExtractionUnitTests:
         with mock.patch.dict("sys.modules", modules):
             with pytest.raises(RuntimeError, match="ssl_cert_path=.*ca-bundle.crt") as exc_info:
                 text_extraction.python_func(
-                    documents_descriptor=_write_descriptor(tmp_path, {"bucket": "b", "documents": []}),
+                    documents_descriptor=_write_descriptor(tmp_path, {"bucket": "b", "documents": [{"key": "a.pdf"}]}),
                     extracted_text=output_artifact,
                     ssl_cert_path="/etc/pki/tls/custom-certs/ca-bundle.crt",
                 )
@@ -491,8 +506,8 @@ class TestTextExtractionUnitTests:
         return root
 
     @mock.patch.dict("os.environ", MOCKED_ENV_VARIABLES, clear=True)
-    def test_ocr_is_enabled_for_non_text_documents(self, tmp_path):
-        """Non-text and non-Markdown documents enable OCR."""
+    def test_ocr_is_enabled_for_layout_documents(self, tmp_path):
+        """PDF and image documents enable OCR."""
         modules, _, mock_docling_config_cls = _make_ai4rag_mocks()
 
         output_artifact = mock.MagicMock()
@@ -512,6 +527,22 @@ class TestTextExtractionUnitTests:
     @mock.patch.dict("os.environ", MOCKED_ENV_VARIABLES, clear=True)
     def test_text_and_markdown_only_documents_disable_ocr(self, tmp_path, keys):
         """Text and Markdown-only corpora do not require RapidOCR models."""
+        modules, _, mock_docling_config_cls = _make_ai4rag_mocks()
+        descriptor = {"bucket": "b", "documents": [{"key": key} for key in keys]}
+        output_artifact = mock.MagicMock(path=str(tmp_path / "output"))
+
+        with mock.patch.dict("sys.modules", modules):
+            text_extraction.python_func(
+                documents_descriptor=_write_descriptor(tmp_path, descriptor),
+                extracted_text=output_artifact,
+            )
+
+        assert mock_docling_config_cls.call_args.kwargs["do_ocr"] is False
+
+    @pytest.mark.parametrize("keys", [["report.docx"], ["recording.mp3"], ["notes.txt", "report.docx"]])
+    @mock.patch.dict("os.environ", MOCKED_ENV_VARIABLES, clear=True)
+    def test_non_layout_documents_disable_ocr(self, tmp_path, keys):
+        """Office and audio formats use their own pipelines, not RapidOCR."""
         modules, _, mock_docling_config_cls = _make_ai4rag_mocks()
         descriptor = {"bucket": "b", "documents": [{"key": key} for key in keys]}
         output_artifact = mock.MagicMock(path=str(tmp_path / "output"))

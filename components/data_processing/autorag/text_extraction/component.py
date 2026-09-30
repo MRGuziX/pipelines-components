@@ -27,9 +27,11 @@ def text_extraction(
 
     Thin wrapper that delegates to ``ai4rag.utils.data.text_extraction.extract_text``.
 
-    OCR is enabled when the selected corpus contains a format other than plain text or
-    Markdown. Docling runs RapidOCR only on pages it flags as needing it, so pages
-    carrying a text layer are read directly and scanned or image-only pages are OCR'd.
+    OCR is enabled when the selected corpus contains a PDF or image. For a PDF
+    page with an embedded text layer, Docling extracts that text directly. For a
+    scanned PDF page or an image without embedded text, Docling uses RapidOCR to
+    recognize the text. Audio and Office formats use their dedicated extraction
+    pipelines without RapidOCR.
 
     The four RapidOCR model paths are pinned explicitly from ``$DOCLING_ARTIFACTS_PATH``
     rather than left to Docling. Docling resolves an unpinned language to PP-OCRv6 and
@@ -61,9 +63,11 @@ def text_extraction(
             languages. In the optimization pipeline this is filled from the language
             AutoRAG detects; for the indexing pipeline pass ``pattern.json``
             ``settings.generation.language.code``.
-        ssl_cert_path: Optional path to a PEM CA bundle used to verify the S3 endpoint.
-            It overrides ``AWS_CA_BUNDLE`` for this component. A wrong or unreadable
-            bundle fails with an actionable error; TLS verification is never disabled.
+        ssl_cert_path: Optional path to a PEM-encoded CA bundle used to verify the S3
+            endpoint. The filename extension is not significant; ``.pem`` and ``.crt``
+            are both common. It overrides ``AWS_CA_BUNDLE`` for this component. A wrong
+            or unreadable bundle fails with an actionable error; TLS verification is
+            never disabled.
     """
     import importlib.util
     import json
@@ -80,7 +84,6 @@ def text_extraction(
     PRESET_DO_TABLE_STRUCTURE = {"speed": False, "balanced": True}
     LAYOUT_OCR_EXTENSIONS = {".pdf", ".jpg", ".jpeg", ".png", ".tif", ".tiff"}
     ASR_EXTENSIONS = {".wav", ".mp3", ".m4a", ".aac", ".ogg", ".flac"}
-    TEXT_ONLY_EXTENSIONS = {".txt", ".md"}
 
     if preset not in VALID_PRESETS:
         raise ValueError(f"preset must be one of {VALID_PRESETS}; got {preset!r}.")
@@ -138,7 +141,7 @@ def text_extraction(
                 descriptor = json.load(f)
             documents = descriptor["documents"]
             suffixes = [Path(document["key"]).suffix.lower() for document in documents]
-            do_ocr = any(suffix not in TEXT_ONLY_EXTENSIONS for suffix in suffixes)
+            do_ocr = any(suffix in LAYOUT_OCR_EXTENSIONS for suffix in suffixes)
             logging.info("OCR enabled=%s for %d document(s)", do_ocr, len(documents))
 
             ocr_model_paths = {}
@@ -181,7 +184,7 @@ def text_extraction(
             )
 
             effective_ssl_cert_path = ssl_cert_path or os.environ.get("AWS_CA_BUNDLE")
-            s3_client = create_s3_client(verify=effective_ssl_cert_path or True)
+            s3_client = create_s3_client(verify=effective_ssl_cert_path or True) if documents else None
 
             try:
                 extraction_result = extract_text(
