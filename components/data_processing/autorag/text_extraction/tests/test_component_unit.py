@@ -2,6 +2,8 @@
 
 import inspect
 import json
+import tempfile
+from pathlib import Path
 from types import MappingProxyType, SimpleNamespace
 from unittest import mock
 
@@ -9,11 +11,14 @@ import pytest
 
 from ..component import _AUTORAG_SHARED, text_extraction
 
+TEST_ARTIFACTS_PATH = Path(tempfile.gettempdir()) / "pipelines-components-docling-test-artifacts"
+
 MOCKED_ENV_VARIABLES = {
     "AWS_ACCESS_KEY_ID": "test_key",
     "AWS_SECRET_ACCESS_KEY": "test_secret",
     "AWS_S3_ENDPOINT": "https://s3.example.com",
     "AWS_DEFAULT_REGION": "us-east-1",
+    "DOCLING_ARTIFACTS_PATH": str(TEST_ARTIFACTS_PATH),
 }
 
 
@@ -90,6 +95,11 @@ def _write_descriptor(tmp_path, descriptor=None):
 class TestTextExtractionUnitTests:
     """Unit tests for the text_extraction thin wrapper."""
 
+    @pytest.fixture(autouse=True)
+    def _configure_docling_artifacts(self):
+        """Supply the image-baked OCR layout expected by successful OCR tests."""
+        _make_docling_artifacts(TEST_ARTIFACTS_PATH)
+
     def test_component_function_exists(self):
         """Component factory exists and exposes python_func."""
         assert callable(text_extraction)
@@ -140,11 +150,11 @@ class TestTextExtractionUnitTests:
 
         assert output_dir.exists()
         modules["ai4rag.utils.clients.s3"].create_s3_client.assert_called_once_with(verify=True)
-        mock_docling_config_cls.assert_called_once_with(
-            do_table_structure=False,
-            do_ocr=True,
-            ocr_lang="english",
-        )
+        config_kwargs = mock_docling_config_cls.call_args.kwargs
+        assert config_kwargs["do_table_structure"] is False
+        assert config_kwargs["do_ocr"] is True
+        assert config_kwargs["ocr_lang"] == "english"
+        assert set(ENGLISH_BUNDLE) <= set(config_kwargs)
         mock_extract.assert_called_once_with(
             documents=[{"key": "docs/a.pdf", "size_bytes": 1000}],
             bucket="my-bucket",
@@ -152,7 +162,7 @@ class TestTextExtractionUnitTests:
             s3_client=modules["ai4rag.utils.clients.s3"].create_s3_client.return_value,
             error_tolerance=0.1,
             max_extraction_workers=4,
-            docling_artifacts_path=None,
+            docling_artifacts_path=str(TEST_ARTIFACTS_PATH),
             docling_config=mock_docling_config_cls.return_value,
         )
 
@@ -479,11 +489,11 @@ class TestTextExtractionUnitTests:
                 preset=preset_value,
             )
 
-        mock_docling_config_cls.assert_called_once_with(
-            do_table_structure=expected_do_table_structure,
-            do_ocr=True,
-            ocr_lang="english",
-        )
+        config_kwargs = mock_docling_config_cls.call_args.kwargs
+        assert config_kwargs["do_table_structure"] is expected_do_table_structure
+        assert config_kwargs["do_ocr"] is True
+        assert config_kwargs["ocr_lang"] == "english"
+        assert set(ENGLISH_BUNDLE) <= set(config_kwargs)
         assert mock_extract.call_args.kwargs["docling_config"] == mock_docling_config_cls.return_value
 
     def _run_with_artifacts(self, tmp_path, modules, ocr_lang=None, artifacts=True):
@@ -607,7 +617,7 @@ class TestTextExtractionUnitTests:
         assert all(kwargs[key] for key in ENGLISH_BUNDLE)
 
     def test_missing_ocr_models_raise(self, tmp_path):
-        """An artifacts path without the RapidOCR bundle fails fast and names the files."""
+        """A mixed corpus fails fast when its artifacts lack the RapidOCR bundle."""
         modules, _, _ = _make_ai4rag_mocks()
 
         empty_artifacts = tmp_path / "artifacts"
@@ -620,27 +630,38 @@ class TestTextExtractionUnitTests:
             with pytest.raises(FileNotFoundError, match="RapidOCR english models are missing"):
                 text_extraction.python_func(
                     documents_descriptor=_write_descriptor(
-                        tmp_path, {"bucket": "b", "documents": [{"key": "scan.pdf"}]}
+                        tmp_path,
+                        {
+                            "bucket": "b",
+                            "documents": [{"key": "notes.txt"}, {"key": "scan.pdf"}],
+                        },
                     ),
                     extracted_text=output_artifact,
                 )
 
     @mock.patch.dict("os.environ", MOCKED_ENV_VARIABLES, clear=True)
-    def test_no_artifacts_path_leaves_models_unpinned(self, tmp_path):
-        """Without DOCLING_ARTIFACTS_PATH the paths are omitted so ai4rag can resolve them."""
+    def test_mixed_corpus_requires_docling_artifacts_path(self, tmp_path, monkeypatch):
+        """A mixed text-and-scan corpus requires the workbench artifacts setting."""
         modules, _, mock_docling_config_cls = _make_ai4rag_mocks()
+        monkeypatch.delenv("DOCLING_ARTIFACTS_PATH", raising=False)
 
         output_artifact = mock.MagicMock()
         output_artifact.path = str(tmp_path / "output")
 
         with mock.patch.dict("sys.modules", modules):
-            text_extraction.python_func(
-                documents_descriptor=_write_descriptor(tmp_path, {"bucket": "b", "documents": [{"key": "scan.pdf"}]}),
-                extracted_text=output_artifact,
-            )
+            with pytest.raises(ValueError, match="DOCLING_ARTIFACTS_PATH is not set"):
+                text_extraction.python_func(
+                    documents_descriptor=_write_descriptor(
+                        tmp_path,
+                        {
+                            "bucket": "b",
+                            "documents": [{"key": "notes.txt"}, {"key": "scan.pdf"}],
+                        },
+                    ),
+                    extracted_text=output_artifact,
+                )
 
-        kwargs = mock_docling_config_cls.call_args.kwargs
-        assert not set(ENGLISH_BUNDLE) & set(kwargs)
+        mock_docling_config_cls.assert_not_called()
 
     @pytest.mark.parametrize("preset_value", ["speed", "balanced"])
     @mock.patch.dict("os.environ", MOCKED_ENV_VARIABLES, clear=True)

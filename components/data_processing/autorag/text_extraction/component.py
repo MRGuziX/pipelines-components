@@ -156,11 +156,9 @@ def text_extraction(
                     )
                 ocr_model_paths = {key: str(path) for key, path in resolved.items()}
             elif do_ocr:
-                # ai4rag accepts only an installed RapidOCR wheel that already contains ONNX
-                # models in this case. It raises before Docling can download models at runtime.
-                logging.warning(
-                    "DOCLING_ARTIFACTS_PATH is unset; OCR requires bundled RapidOCR wheel models. "
-                    "Runtime Docling model downloads are disabled."
+                raise ValueError(
+                    "OCR was requested for PDF or image documents, but DOCLING_ARTIFACTS_PATH is not set. "
+                    "Configure it in the workbench environment to the image-baked Docling artifacts bundle."
                 )
 
             candidate_metrics = {
