@@ -1,4 +1,4 @@
---index-url https://pypi.org/simple
+--index-url https://packages.redhat.com/api/pypi/public-rhai/cpu-torch2.13-el9.8-test/simple
 
 kfp==2.17.0
 ai4rag[text-extraction]==0.20.0
