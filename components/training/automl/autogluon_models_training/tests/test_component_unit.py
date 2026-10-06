@@ -285,7 +285,7 @@ class TestAutogluonModelsTrainingUnitTests:
             and "The AutoGluon version used in this notebook" in "".join(cell["source"])
             and "PIP_INDEX_URL" in "".join(cell["source"])
             and "Red Hat package index" in "".join(cell["source"])
-            and "%env PIP_INDEX_URL=https://console.redhat.com/api/pypi/public-rhai/rhoai/3.6/cpu-ubi9-test/simple/"
+            and "%env PIP_INDEX_URL=https://packages.redhat.com/api/pypi/public-rhai/cpu-torch2.13-el9.8-test/simple"
             in "".join(cell["source"])
             and "If your notebook environment does not already provide it" in "".join(cell["source"])
             and "PIP_EXTRA_INDEX_URL" not in "".join(cell["source"])
@@ -599,7 +599,7 @@ class TestAutogluonModelsTrainingUnitTests:
     @mock.patch("pandas.read_parquet")
     @mock.patch("autogluon.tabular.TabularPredictor")
     def test_quality_preset_fit_args(self, mock_predictor_class, mock_read_parquet, tmp_path):
-        """Quality uses best_quality, default hyperparameters, bagging, and stacking."""
+        """Quality uses best_quality, zeroshot hyperparameters, eight-fold bagging, and stacking."""
         mock_predictor = mock.MagicMock()
         mock_predictor_clone = mock.MagicMock()
         mock_predictor_class.return_value.fit.return_value = mock_predictor
@@ -642,12 +642,15 @@ class TestAutogluonModelsTrainingUnitTests:
 
         fit_call = mock_predictor_class.return_value.fit.call_args
         assert fit_call[1]["presets"] == "best_quality"
+        sys.modules["autogluon.tabular.configs.hyperparameter_configs"].get_hyperparameter_config.assert_called_with(
+            "zeroshot"
+        )
         assert fit_call[1]["time_limit"] == 360 * 60
         assert fit_call[1]["num_cpus"] == 16
         assert fit_call[1]["memory_limit"] == 64
         assert all("num_threads" not in config for config in fit_call[1]["hyperparameters"]["GBM"])
         assert fit_call[1]["excluded_model_types"] == ["CAT", "KNN"]
-        assert fit_call[1]["num_bag_folds"] == 5
+        assert fit_call[1]["num_bag_folds"] == 8
         assert fit_call[1]["num_stack_levels"] == 1
         assert "fit_strategy" not in fit_call[1]
 

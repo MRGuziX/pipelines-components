@@ -39,7 +39,7 @@ Authentication uses AWS-style credentials provided via environment variables (e.
 | `sampling_method` | `Optional[str]` | `None` | "first_n_rows", "stratified", or "random"; if None, derived from task_type. |
 | `task_type` | `str` | `regression` | "binary", "multiclass", or "regression" (default); used when sampling_method is None. |
 | `split_config` | `Optional[dict]` | `None` | Split configuration dictionary. Available keys: "test_size" (float), "random_state" (int), "stratify" (bool). |
-| `selection_train_size` | `float` | `0.3` | Fraction of the train portion used for model selection (default 0.3). |
+| `selection_train_size` | `float` | `0.3` | Model-selection fraction (default 0.3). |
 | `test_data_bucket_name` | `str` | `""` | S3 bucket name for user-provided test dataset (default: empty string). |
 | `test_data_file_key` | `str` | `""` | S3 object key of the user-provided test CSV (default: empty string). |
 | `preset` | `str` | `speed` | Training quality tier controlling the sampling size budget. ``"speed"`` (default) samples up to 100 MiB; ``"balanced"`` samples up to 1 GiB; and ``"quality"`` samples up to 10 GiB. User-provided test datasets are capped at 50 MiB, 100 MiB, and 1 GiB respectively. |
@@ -98,7 +98,7 @@ def example_pipeline(
     - Name: Pipelines, Version: >=2.15.2
 - **Tags**:
   - data-processing
-- **Last Verified**: 2026-05-22 00:00:00+00:00
+- **Last Verified**: 2026-10-05 00:00:00+00:00
 - **Owners**:
   - No Parent Owners: Yes
   - Approvers:
@@ -134,6 +134,10 @@ The `split_config` dictionary parameter supports:
 
 - **Regression**: `stratify` is ignored; the split is always random.
 - **Binary / multiclass**: If `stratify` is `True` (default), the split is stratified by `label_column`; if `False`, the split is random.
+
+For classification with `stratify=True`, each class needs enough sampled training rows to appear on both sides of the holdout split and, afterward, on both sides of the selection/extra split.
+The loader raises a `ValueError` with class counts and the resulting allocation before training if either split is not viable.
+A user-provided test file skips the holdout check.
 
 The `selection_train_size` parameter (default: 0.3) controls the secondary split of the train portion:
 
