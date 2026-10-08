@@ -42,5 +42,5 @@ COPY --from=whisper-modelcar \
      /models/ \
      /opt/app-root/models/whisper-tiny/
 RUN chown -R 1001:0 /opt/app-root/docling-artifacts /opt/app-root/models && \
-    chmod -R g+rw /opt/app-root/docling-artifacts /opt/app-root/models
+    chmod -R g+rX /opt/app-root/docling-artifacts /opt/app-root/models
 USER default
