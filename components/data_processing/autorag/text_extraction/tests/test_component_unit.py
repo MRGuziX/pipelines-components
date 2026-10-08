@@ -233,7 +233,7 @@ class TestTextExtractionUnitTests:
         )
         output_artifact = SimpleNamespace(path=str(tmp_path / "output"))
         component_status = SimpleNamespace(path=str(tmp_path / "status"), metadata={})
-        embedded_artifact = SimpleNamespace(path=str(_AUTORAG_SHARED))
+        embedded_artifact = SimpleNamespace(path=str(_AUTORAG_SHARED / "runtime_embed"))
 
         asr_model = _make_asr_model(tmp_path / "whisper-tiny")
         with (
@@ -278,7 +278,7 @@ class TestTextExtractionUnitTests:
         )
         output_artifact = SimpleNamespace(path=str(tmp_path / "output"))
         component_status = SimpleNamespace(path=str(tmp_path / "status"), metadata={})
-        embedded_artifact = SimpleNamespace(path=str(_AUTORAG_SHARED))
+        embedded_artifact = SimpleNamespace(path=str(_AUTORAG_SHARED / "runtime_embed"))
 
         asr_model = _make_asr_model(tmp_path / "whisper-tiny")
         with (
