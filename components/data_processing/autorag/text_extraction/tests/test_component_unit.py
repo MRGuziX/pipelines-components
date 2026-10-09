@@ -89,7 +89,8 @@ def _make_asr_model(root):
         "tokenizer_config.json",
         "model.safetensors",
     ):
-        (root / name).write_text("{}", encoding="utf-8")
+        content = json.dumps({"model_type": "whisper"}) if name == "config.json" else "{}"
+        (root / name).write_text(content, encoding="utf-8")
     return root
 
 
@@ -612,6 +613,47 @@ class TestTextExtractionUnitTests:
             )
 
         assert mock_docling_config_cls.call_args.kwargs["asr_model_path"] == str(asr_model.resolve())
+
+    @pytest.mark.parametrize("model_config", [{}, {"model_type": "wav2vec2"}])
+    @mock.patch.dict("os.environ", MOCKED_ENV_VARIABLES, clear=True)
+    def test_audio_rejects_non_whisper_modelcar(self, tmp_path, model_config):
+        """Audio preflight rejects modelcars that are not Transformers Whisper models."""
+        modules, mock_extract, _ = _make_ai4rag_mocks()
+        asr_model = _make_asr_model(tmp_path / "not-whisper")
+        (asr_model / "config.json").write_text(json.dumps(model_config), encoding="utf-8")
+        output_artifact = mock.MagicMock(path=str(tmp_path / "output"))
+
+        with (
+            mock.patch.dict("os.environ", {"HF_MODEL_DIR": str(asr_model)}),
+            mock.patch.dict("sys.modules", modules),
+            pytest.raises(ValueError, match="only Hugging Face Whisper models"),
+        ):
+            text_extraction.python_func(
+                documents_descriptor=_write_descriptor(tmp_path, {"bucket": "b", "documents": [{"key": "call.mp3"}]}),
+                extracted_text=output_artifact,
+            )
+
+        mock_extract.assert_not_called()
+
+    @mock.patch.dict("os.environ", MOCKED_ENV_VARIABLES, clear=True)
+    def test_audio_rejects_invalid_model_config(self, tmp_path):
+        """Audio preflight rejects malformed Transformers model configuration."""
+        modules, mock_extract, _ = _make_ai4rag_mocks()
+        asr_model = _make_asr_model(tmp_path / "invalid-config")
+        (asr_model / "config.json").write_text("not json", encoding="utf-8")
+        output_artifact = mock.MagicMock(path=str(tmp_path / "output"))
+
+        with (
+            mock.patch.dict("os.environ", {"HF_MODEL_DIR": str(asr_model)}),
+            mock.patch.dict("sys.modules", modules),
+            pytest.raises(ValueError, match="invalid config.json"),
+        ):
+            text_extraction.python_func(
+                documents_descriptor=_write_descriptor(tmp_path, {"bucket": "b", "documents": [{"key": "call.mp3"}]}),
+                extracted_text=output_artifact,
+            )
+
+        mock_extract.assert_not_called()
 
     @pytest.mark.parametrize("keys", [["report.docx"], ["recording.mp3"], ["notes.txt", "report.docx"]])
     @mock.patch.dict("os.environ", MOCKED_ENV_VARIABLES, clear=True)
