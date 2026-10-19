@@ -13,6 +13,14 @@ COPY pipelines/training/autorag/documents_rag_optimization_pipeline/requirements
 ## TODO: Ensure build isolation
 RUN pip install --no-cache-dir -r /tmp/requirements.txt
 
+# Temporary backport of the ai4rag decoder fix for RHAI-8244. Remove when the
+# installed ai4rag release opens audio files directly instead of piping bytes.
+COPY pipelines/training/autorag/documents_rag_optimization_pipeline/patches/ai4rag-m4a.patch /tmp/ai4rag-m4a.patch
+RUN SITE_PACKAGES="$(python -c 'from importlib.metadata import distribution; print(distribution("ai4rag").locate_file(""))')" && \
+    cd "$SITE_PACKAGES" && \
+    git apply /tmp/ai4rag-m4a.patch && \
+    command -v ffmpeg
+
 # Temporary workaround for docling-core versions that reject the MIME type
 # emitted by Docling's M4A ASR path. Remove when the upstream fix is available.
 RUN ORIGIN_FILE="$(python -c 'import inspect; from docling_core.types.doc.common.origin import DocumentOrigin; print(inspect.getfile(DocumentOrigin))')" && \

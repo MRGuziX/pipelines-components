@@ -48,7 +48,7 @@ deployment settings), executable notebooks, and evaluation results.
   - pipeline
   - autorag
   - rag-optimization
-- **Last Verified**: 2026-10-13 00:00:00+00:00
+- **Last Verified**: 2026-10-19 00:00:00+00:00
 - **Owners**:
   - No Parent Owners: Yes
   - Approvers:
@@ -63,6 +63,14 @@ deployment settings), executable notebooks, and evaluation results.
     - MichalSteczko
 
 <!-- custom-content -->
+
+### Audio decoding
+
+The training image temporarily applies [the ai4rag M4A decoder backport](patches/ai4rag-m4a.patch)
+for [RHAI-8244](https://redhat.atlassian.net/browse/RHAI-8244). FFmpeg opens the local
+audio file directly so it can seek when M4A metadata is stored at the end of the file.
+The decoded waveform is passed to Whisper at the model's sampling rate. Remove the
+backport from the Containerfile when the installed ai4rag release includes the fix.
 
 ### Progress and dashboard artifacts
 
